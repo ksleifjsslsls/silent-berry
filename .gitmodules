@@ -1,0 +1,6 @@
+[submodule "deps/spore-contract"]
+	path = deps/spore-contract
+	url = https://github.com/sporeprotocol/spore-contract.git
+[submodule "deps/ckb-production-scripts"]
+	path = deps/ckb-production-scripts
+	url = https://github.com/nervosnetwork/ckb-production-scripts.git
