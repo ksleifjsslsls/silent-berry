@@ -88,6 +88,26 @@ impl Loader {
         }
         result.unwrap().into()
     }
+
+    pub fn load_3rd_binary(&self, name: &str) -> Bytes {
+        let mut path = self.0.clone().join("../../thirdparty-contracts/");
+        path.push(name);
+        let result = fs::read(&path);
+        if result.is_err() {
+            panic!("Binary {:?} is missing!", path);
+        }
+        result.unwrap().into()
+    }
+
+    pub fn load_xudt(&self) -> Bytes {
+        self.load_3rd_binary("xudt_rce")
+    }
+    pub fn load_alway_suc(&self) -> Bytes {
+        self.load_3rd_binary("always_success")
+    }
+    pub fn load_spore(&self) -> Bytes {
+        self.load_3rd_binary("spore")
+    }
 }
 
 // This helper method runs Context::verify_tx, but in case error happens,
