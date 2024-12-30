@@ -11,6 +11,7 @@ members = [
   "contracts/purchase-intent",
   "native-simulators/account-book-sim",
   "contracts/account-book",
+  "crate/spore-types",
   "tests",
 ]
 

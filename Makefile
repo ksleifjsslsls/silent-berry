@@ -59,6 +59,18 @@ build:
 		cargo build -p $(CONTRACT)-sim; \
 	fi;
 
+build-deps:
+	cd deps/spore-contract && capsule build --release
+	cd deps/ckb-production-scripts && make all-via-docker
+	cp deps/spore-contract/build/release/cluster ./build/3rd-bin/
+	cp deps/spore-contract/build/release/cluster_agent ./build/3rd-bin/
+	cp deps/spore-contract/build/release/cluster_proxy ./build/3rd-bin/
+	cp deps/spore-contract/build/release/libckblua.so ./build/3rd-bin/
+	cp deps/spore-contract/build/release/spore ./build/3rd-bin/
+	cp deps/spore-contract/build/release/spore_extension_lua ./build/3rd-bin/
+	cp deps/ckb-production-scripts/build/xudt_rce ./build/3rd-bin/
+	cp deps/ckb-production-scripts/build/always_success ./build/3rd-bin/
+
 # Run a single make task for a specific contract. For example:
 #
 # make run CONTRACT=stack-reorder TASK=adjust_stack_size STACK_SIZE=0x200000
@@ -133,6 +145,13 @@ generate-native-simulator:
 
 prepare:
 	rustup target add riscv64imac-unknown-none-elf
+
+mol:
+	moleculec --language rust --schema-file crate/spore-types/schemas/cobuild/basic.mol > crate/spore-types/src/cobuild/basic.rs
+	moleculec --language rust --schema-file crate/spore-types/schemas/cobuild/top_level.mol > crate/spore-types/src/cobuild/top_level.rs
+	moleculec --language rust --schema-file crate/spore-types/schemas/spore/spore_v1.mol > crate/spore-types/src/spore/spore_v1.rs
+	moleculec --language rust --schema-file crate/spore-types/schemas/spore/spore_v2.mol > crate/spore-types/src/spore/spore_v2.rs
+	moleculec --language rust --schema-file crate/spore-types/schemas/spore/action.mol > crate/spore-types/src/spore/action.rs
 
 # Generate checksum info for reproducible build
 CHECKSUM_FILE := build/checksums-$(MODE).txt
