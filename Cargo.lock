@@ -734,6 +734,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "dob-selling"
+version = "0.1.0"
+dependencies = [
+ "ckb-std",
+]
+
+[[package]]
+name = "dob-selling-sim"
+version = "0.1.0"
+dependencies = [
+ "ckb-std",
+ "dob-selling",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1567,6 +1582,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "spore-types"
+version = "0.1.0"
+dependencies = [
+ "ckb-gen-types",
+ "molecule",
+]
+
+[[package]]
 name = "ssri"
 version = "9.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1623,7 +1646,9 @@ name = "tests"
 version = "0.1.0"
 dependencies = [
  "ckb-testtool",
+ "molecule",
  "serde_json",
+ "spore-types",
 ]
 
 [[package]]
