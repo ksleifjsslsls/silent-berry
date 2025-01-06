@@ -9,10 +9,13 @@ impl From<&[u8]> for spore_v1::Bytes {
     fn from(value: &[u8]) -> Self {
         use molecule::prelude::*;
         BytesBuilder::default()
-            .set(value.iter().map(|f| f.clone().into()).collect())
+            .set(value.iter().map(|f| (*f).into()).collect())
             .build()
     }
 }
+
+extern crate alloc;
+use alloc::{string::String, vec::Vec};
 
 #[derive(Debug, Clone)]
 pub struct NativeNFTData {

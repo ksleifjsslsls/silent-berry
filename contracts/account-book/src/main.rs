@@ -9,8 +9,11 @@ ckb_std::entry!(program_entry);
 #[cfg(not(any(feature = "native-simulator", test)))]
 ckb_std::default_alloc!();
 
-pub fn program_entry() -> i8 {
-    ckb_std::debug!("This is a sample contract!");
+use ckb_std::log;
 
+pub fn program_entry() -> i8 {
+    ckb_std::logger::init().expect("Init Logger Failed");
+    log::debug!("Begin AccountBook");
+    log::debug!("End AccountBook");
     0
 }

@@ -1,0 +1,25 @@
+array Uint64 [byte; 8];
+array Uint128 [byte; 16];
+array Byte32 [byte; 32];
+
+table BuyIntentData {
+    dob_selling_script_hash: Byte32,
+    account_book_script_hash: Byte32,
+    xudt_script_hash: Byte32,
+    asset_amount: Uint128,
+    min_capacity: Uint64,
+    change_script_hash: Byte32,
+    expire_since: Uint64,
+    owner_script_hash: Byte32,
+}
+
+table DobSellingData {
+    asset_amount: Uint128,
+    account_book_script_hash: Byte32,
+}
+
+table AccountBookData {
+    asset_amount: Uint128,
+    dob_selling_code_hash: Byte32,
+    buy_intent_code_hash: Byte32,
+}

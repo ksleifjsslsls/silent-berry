@@ -1,11 +1,11 @@
 [package]
-name = "purchase-intent-sim"
+name = "buy-intent-sim"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-purchase-intent = { path = "../../contracts/purchase-intent", features = ["native-simulator"] }
+buy-intent = { path = "../../contracts/buy-intent", features = ["native-simulator"] }
 ckb-std = { version = "0.16.3", features = ["native-simulator"] }
 
 [lib]

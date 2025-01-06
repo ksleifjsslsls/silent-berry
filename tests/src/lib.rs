@@ -1,114 +1,27 @@
 use ckb_testtool::{
     ckb_error::Error,
     ckb_types::{
-        bytes::Bytes,
-        core::{Cycle, TransactionView},
+        core::{Cycle, ScriptHashType, TransactionView},
+        packed::{CellOutput, Script},
+        prelude::*,
     },
     context::Context,
 };
 use std::env;
-use std::fs;
-use std::path::PathBuf;
-use std::str::FromStr;
 
 #[cfg(test)]
 mod tests;
 
-// The exact same Loader code from capsule's template, except that
-// now we use MODE as the environment variable
-const TEST_ENV_VAR: &str = "MODE";
+pub mod spore;
 
-pub enum TestEnv {
-    Debug,
-    Release,
-}
+pub const MAX_CYCLES: u64 = 10_000_000;
 
-impl FromStr for TestEnv {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "debug" => Ok(TestEnv::Debug),
-            "release" => Ok(TestEnv::Release),
-            _ => Err("no match"),
-        }
-    }
-}
-
-pub struct Loader(PathBuf);
-
-impl Default for Loader {
-    fn default() -> Self {
-        let test_env = match env::var(TEST_ENV_VAR) {
-            Ok(val) => val.parse().expect("test env"),
-            Err(_) => TestEnv::Release,
-        };
-        Self::with_test_env(test_env)
-    }
-}
-
-impl Loader {
-    fn with_test_env(env: TestEnv) -> Self {
-        let load_prefix = match env {
-            TestEnv::Debug => "debug",
-            TestEnv::Release => "release",
-        };
-        let mut base_path = match env::var("TOP") {
-            Ok(val) => {
-                let mut base_path: PathBuf = val.into();
-                base_path.push("build");
-                base_path
-            }
-            Err(_) => {
-                let mut base_path = PathBuf::new();
-                // cargo may use a different cwd when running tests, for example:
-                // when running debug in vscode, it will use workspace root as cwd by default,
-                // when running test by `cargo test`, it will use tests directory as cwd,
-                // so we need a fallback path
-                base_path.push("build");
-                if !base_path.exists() {
-                    base_path.pop();
-                    base_path.push("..");
-                    base_path.push("build");
-                }
-                base_path
-            }
-        };
-
-        base_path.push(load_prefix);
-        Loader(base_path)
-    }
-
-    pub fn load_binary(&self, name: &str) -> Bytes {
-        let mut path = self.0.clone();
-        path.push(name);
-        let result = fs::read(&path);
-        if result.is_err() {
-            panic!("Binary {:?} is missing!", path);
-        }
-        result.unwrap().into()
-    }
-
-    pub fn load_3rd_binary(&self, name: &str) -> Bytes {
-        let mut path = self.0.clone().join("../../thirdparty-contracts/");
-        path.push(name);
-        let result = fs::read(&path);
-        if result.is_err() {
-            panic!("Binary {:?} is missing!", path);
-        }
-        result.unwrap().into()
-    }
-
-    pub fn load_xudt(&self) -> Bytes {
-        self.load_3rd_binary("xudt_rce")
-    }
-    pub fn load_alway_suc(&self) -> Bytes {
-        self.load_3rd_binary("always_success")
-    }
-    pub fn load_spore(&self) -> Bytes {
-        self.load_3rd_binary("spore")
-    }
-}
+pub const NAME_ALWAYS_SUC: &str = "always_success";
+pub const NAME_XUDT: &str = "xudt_rce";
+pub const NAME_BUY_INTENT: &str = "buy-intent";
+pub const NAME_DOB_SELLING: &str = "dob-selling";
+pub const NAME_ACCOUNT_BOOK: &str = "account-book";
+pub const NAME_WITHDRAWAL_INTENT: &str = "withdrawal-intent";
 
 // This helper method runs Context::verify_tx, but in case error happens,
 // it also dumps current transaction to failed_txs folder.
@@ -127,6 +40,116 @@ pub fn verify_and_dump_failed_tx(
         path.push(format!("0x{:x}.json", tx.hash()));
         println!("Failed tx written to {:?}", path);
         std::fs::write(path, json).expect("write");
+    } else {
+        println!("Cycles: {}", result.as_ref().unwrap());
     }
     result
+}
+
+pub fn new_context() -> Context {
+    let mut context = Context::default();
+    context.add_contract_dir("../build/release");
+    context.add_contract_dir("../build/3rd-bin");
+    context
+}
+
+pub fn build_always_suc_script(context: &mut Context, args: &[u8]) -> Script {
+    let out_point = context.deploy_cell_by_name(NAME_ALWAYS_SUC);
+
+    context
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
+        .expect("always success")
+}
+
+pub fn build_xudt_script(
+    context: &mut Context,
+    owner_script: [u8; 32],
+    other_args: &[u8],
+) -> Option<Script> {
+    let out_point = context.deploy_cell_by_name(NAME_XUDT);
+    Some(
+        context
+            .build_script_with_hash_type(
+                &out_point,
+                ScriptHashType::Data1,
+                [owner_script.to_vec(), other_args.to_vec()].concat().into(),
+            )
+            .expect("build xudt"),
+    )
+}
+
+pub fn build_xudt_cell(context: &mut Context, capacity: u64, lock_script: Script) -> CellOutput {
+    let xudt_script: Option<Script> = build_xudt_script(context, [0u8; 32], &[]);
+
+    CellOutput::new_builder()
+        .capacity(capacity.pack())
+        .lock(lock_script)
+        .type_(xudt_script.pack())
+        .build()
+}
+
+pub fn build_dob_selling_script(
+    context: &mut Context,
+    dob_selling_data: &types::DobSellingData,
+) -> Script {
+    let out_point = context.deploy_cell_by_name(NAME_DOB_SELLING);
+
+    let dob_hash = ckb_hash(dob_selling_data.as_slice());
+    context
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data2, dob_hash.to_vec().into())
+        .expect("build dob-selling script")
+}
+
+pub fn build_buy_intent_script(context: &mut Context, args: &[u8]) -> Script {
+    let out_point = context.deploy_cell_by_name(NAME_BUY_INTENT);
+
+    context
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data2, args.to_vec().into())
+        .expect("build buy-intent script")
+}
+
+pub fn build_buy_intent_cell(
+    context: &mut Context,
+    capacity: u64,
+    lock_script: Script,
+    buy_intent_args: &[u8],
+) -> CellOutput {
+    let t = build_buy_intent_script(context, buy_intent_args);
+
+    CellOutput::new_builder()
+        .capacity(capacity.pack())
+        .lock(lock_script)
+        .type_(Some(t).pack())
+        .build()
+}
+
+pub fn build_account_book_script(context: &mut Context, args: [u8; 32]) -> Script {
+    let out_point = context.deploy_cell_by_name(NAME_ACCOUNT_BOOK);
+    context
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
+        .expect("build xudt")
+}
+
+pub fn build_account_book_cell(
+    context: &mut Context,
+    account_book_data: types::AccountBookData,
+) -> CellOutput {
+    let account_book_script =
+        build_account_book_script(context, ckb_hash(account_book_data.as_slice()));
+
+    let xudt_script = build_xudt_script(context, [0u8; 32], &[]);
+
+    CellOutput::new_builder()
+        .capacity(16.pack())
+        .lock(account_book_script)
+        .type_(xudt_script.pack())
+        .build()
+}
+
+pub fn ckb_hash(data: &[u8]) -> [u8; 32] {
+    ckb_testtool::ckb_hash::blake2b_256(data)
+}
+
+pub fn to_fixed32(d: &[u8]) -> [u8; 32] {
+    d.try_into().unwrap()
 }

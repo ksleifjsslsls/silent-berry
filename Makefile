@@ -103,7 +103,7 @@ cargo:
 	cargo $(CARGO_CMD) $(CARGO_ARGS)
 
 clean:
-	rm -rf build
+	rm -rf build/release build/debug
 	cargo clean
 
 TEMPLATE_TYPE := --git
@@ -147,6 +147,10 @@ prepare:
 	rustup target add riscv64imac-unknown-none-elf
 
 mol:
+	moleculec --language rust --schema-file crate/types/schemas/silent_berry.mol > crate/types/src/silent_berry.rs
+	cargo fmt -- crate/types/src/silent_berry.rs
+
+spore-mol:
 	moleculec --language rust --schema-file crate/spore-types/schemas/cobuild/basic.mol > crate/spore-types/src/cobuild/basic.rs
 	moleculec --language rust --schema-file crate/spore-types/schemas/cobuild/top_level.mol > crate/spore-types/src/cobuild/top_level.rs
 	moleculec --language rust --schema-file crate/spore-types/schemas/spore/spore_v1.mol > crate/spore-types/src/spore/spore_v1.rs
