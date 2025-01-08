@@ -1,25 +1,46 @@
-array Uint64 [byte; 8];
-array Uint128 [byte; 16];
-array Byte32 [byte; 32];
+import blockchain;
 
 table BuyIntentData {
     dob_selling_script_hash: Byte32,
-    account_book_script_hash: Byte32,
     xudt_script_hash: Byte32,
     asset_amount: Uint128,
     min_capacity: Uint64,
     change_script_hash: Byte32,
     expire_since: Uint64,
     owner_script_hash: Byte32,
+    change_location: Uint32,
 }
 
 table DobSellingData {
-    asset_amount: Uint128,
     account_book_script_hash: Byte32,
+    spore_data_hash: Byte32,
+    buy_intent_code_hash: Byte32,
+    owner_script_hash: Byte32,
 }
 
+array AProfit [byte; 2];
+array BProfit [byte; 3];
+array CProfit [byte; 4];
+array DProfit [byte; 5];
+
 table AccountBookData {
-    asset_amount: Uint128,
     dob_selling_code_hash: Byte32,
     buy_intent_code_hash: Byte32,
+    withdrawal_intent_code_hash: Byte32,
+    xudt_script_hash: Byte32,
+
+    auther_id: Byte32,
+    platform_id: Byte32,
+    cluster_id: Byte32,
+
+    asset_amount: Uint128,
+    a_num: Uint32,
+    b_num: Uint32,
+    c_num: Uint32,
+    a_profit: AProfit,
+    b_profit: BProfit,
+    c_profit: CProfit,
+    d_profit: DProfit,
+
+    proof: Bytes,
 }

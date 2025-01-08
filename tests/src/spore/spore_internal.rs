@@ -1,14 +1,14 @@
-use ckb_testtool::builtin::ALWAYS_SUCCESS;
+use ckb_testtool::ckb_types::core::ScriptHashType;
 use ckb_testtool::ckb_types::{bytes::Bytes, packed::*, prelude::*};
 use ckb_testtool::context::Context;
 
 pub fn build_always_success_script(context: &mut Context, args: Bytes) -> Script {
-    let always_success_out_point = context.deploy_cell(ALWAYS_SUCCESS.clone());
+    let always_success_out_point = context.deploy_cell_by_name("always_success");
 
     // build lock script
     context
-        .build_script(&always_success_out_point, args)
-        .expect("always success script")
+        .build_script_with_hash_type(&always_success_out_point, ScriptHashType::Data1, args)
+        .unwrap()
 }
 
 pub fn build_output(

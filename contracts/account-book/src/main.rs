@@ -14,6 +14,7 @@ use ckb_std::log;
 pub fn program_entry() -> i8 {
     ckb_std::logger::init().expect("Init Logger Failed");
     log::debug!("Begin AccountBook");
+
     log::debug!("End AccountBook");
     0
 }

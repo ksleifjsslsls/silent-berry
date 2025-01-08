@@ -12,6 +12,8 @@ pub enum SilentBerryError {
     SysError,
     MolVerificationError,
     DobSellingScriptHash,
+    AccountBookScriptHash,
+    SporeDataHash,
     XudtNotFound,
     XudtIncorrect,
     PaymentAmount,

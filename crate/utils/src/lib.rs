@@ -1,5 +1,8 @@
 #![no_std]
 
+mod member_info;
+pub use member_info::*;
+
 pub const HASH_SIZE: usize = 32;
 const CKB_HASH_PERSONALIZATION: &[u8] = b"ckb-default-hash";
 

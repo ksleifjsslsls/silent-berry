@@ -1,13 +1,18 @@
-use crate::*;
-use ckb_testtool::ckb_types::{core::TransactionBuilder, packed::*};
+use crate::{build_tx::*, *};
+use ckb_testtool::ckb_types::{
+    core::TransactionBuilder,
+    packed::{CellInput, CellOutput, Script, WitnessArgs},
+    prelude::{Builder, Entity, Pack, PackVec},
+};
+use utils::MemberInfo;
 
 mod test_data {
     pub const G_ASSET_AMOUNT: u128 = 200;
     pub const G_MIN_CAPACITY: u64 = 1000;
 
-    use crate::*;
+    use crate::{build_tx::*, *};
+    use ckb_testtool::ckb_types::prelude::{Builder, Entity, Pack};
     use lazy_static::lazy_static;
-    use molecule::prelude::{Builder, Entity};
     use types::*;
 
     lazy_static! {
@@ -40,62 +45,52 @@ mod test_data {
                 .try_into()
                 .unwrap()
         };
-        static ref G_BuyIntentCodeHash: [u8; 32] = {
-            let mut context = new_context();
-            let out_point = context.deploy_cell_by_name(NAME_BUY_INTENT);
-            let (_, contract_data) = context.cells.get(&out_point).unwrap();
-            CellOutput::calc_data_hash(contract_data)
-                .as_slice()
-                .try_into()
-                .unwrap()
+        pub static ref G_AccountBookDataBuilder: AccountBookDataBuilder = {
+            AccountBookDataBuilder::default()
+                .dob_selling_code_hash((*DOBSellingCodeHash).pack())
+                .buy_intent_code_hash((*BuyIntentCodeHash).pack())
+                .withdrawal_intent_code_hash((*WithdrawalIntentCodeHash).pack())
+                .auther_id([1u8; 32].pack())
+                .platform_id([2u8; 32].pack())
+                .cluster_id([3u8; 32].pack())
+                .asset_amount(G_ASSET_AMOUNT.pack())
+                .a_num(3u32.pack())
+                .b_num(17u32.pack())
+                .c_num(25u32.pack())
+                .a_profit(
+                    AProfit::new_builder()
+                        .set([20u8.into(), 80u8.into()])
+                        .build(),
+                )
+                .b_profit(
+                    BProfit::new_builder()
+                        .set([20u8.into(), 20u8.into(), 60u8.into()])
+                        .build(),
+                )
+                .c_profit(
+                    CProfit::new_builder()
+                        .set([20u8.into(), 20u8.into(), 36u8.into(), 24u8.into()])
+                        .build(),
+                )
+                .d_profit(
+                    DProfit::new_builder()
+                        .set([
+                            20u8.into(),
+                            20u8.into(),
+                            20u8.into(),
+                            20u8.into(),
+                            20u8.into(),
+                        ])
+                        .build(),
+                )
         };
-        static ref G_DOBSellingCodeHash: [u8; 32] = {
-            let mut context = new_context();
-            let out_point = context.deploy_cell_by_name(NAME_DOB_SELLING);
-            let (_, contract_data) = context.cells.get(&out_point).unwrap();
-            CellOutput::calc_data_hash(contract_data)
-                .as_slice()
-                .try_into()
-                .unwrap()
-        };
-        pub static ref G_AccountBookData: AccountBookData = {
-            AccountBookData::new_builder()
-                .asset_amount(G_ASSET_AMOUNT.to_le_bytes().into())
-                .dob_selling_code_hash((*G_DOBSellingCodeHash).into())
-                .buy_intent_code_hash((*G_BuyIntentCodeHash).into())
-                .build()
-        };
-        pub static ref G_AccountBookScriptHash: [u8; 32] = {
-            let hash = ckb_hash(G_AccountBookData.as_slice())
-                .as_slice()
-                .try_into()
-                .unwrap();
-            build_account_book_script(&mut new_context(), hash)
-                .calc_script_hash()
-                .as_slice()
-                .try_into()
-                .unwrap()
-        };
-        pub static ref G_DobSellingData: DobSellingData = {
-            DobSellingData::new_builder()
-                .asset_amount(G_ASSET_AMOUNT.to_le_bytes().into())
-                .account_book_script_hash((*G_AccountBookScriptHash).into())
-                .build()
-        };
-        pub static ref G_DobSellingScriptHash: [u8; 32] = {
-            build_dob_selling_script(&mut new_context(), &*G_DobSellingData)
-                .calc_script_hash()
-                .as_slice()
-                .try_into()
-                .unwrap()
-        };
+        pub static ref G_DobSellingDataBuilder: DobSellingDataBuilder =
+            DobSellingData::new_builder();
         pub static ref G_BuyIntentDataBuilder: BuyIntentDataBuilder = {
-            BuyIntentData::new_builder()
-                .dob_selling_script_hash((*G_DobSellingScriptHash).into())
-                .account_book_script_hash((*G_AccountBookScriptHash).into())
-                .xudt_script_hash((*G_XUdtScriptHash).into())
-                .asset_amount(G_ASSET_AMOUNT.to_le_bytes().into())
-                .min_capacity(G_MIN_CAPACITY.to_le_bytes().into())
+            BuyIntentDataBuilder::default()
+                .xudt_script_hash((*G_XUdtScriptHash).pack())
+                .asset_amount(G_ASSET_AMOUNT.pack())
+                .min_capacity(G_MIN_CAPACITY.pack())
         };
     }
 }
@@ -123,16 +118,24 @@ fn test_simple_buy_intent() {
             .previous_output(context.create_cell(def_output.clone(), Default::default()))
             .build(),
     ];
-
-    let dob_selling_data = test_data::G_DobSellingData.clone();
+    let spore_data = crate::spore::build_serialized_spore_data(
+        "{\"dna\":\"4000000000002\"}".as_bytes().to_vec(),
+        "dob/1",
+        Some(vec![0u8; 32]),
+    );
+    let dob_selling_data = test_data::G_DobSellingDataBuilder
+        .clone()
+        .spore_data_hash(ckb_hash(spore_data.as_slice()).pack())
+        .build();
     let dob_selling = build_dob_selling_script(&mut context, &dob_selling_data);
     let dob_selling_udt = build_xudt_cell(&mut context, 16, dob_selling.clone());
 
     let buy_intent_data = test_data::G_BuyIntentDataBuilder
         .clone()
-        .change_script_hash([0u8; 32].into())
-        .expire_since(1000u64.to_le_bytes().into())
-        .owner_script_hash([0u8; 32].into())
+        .dob_selling_script_hash(dob_selling.calc_script_hash())
+        .change_script_hash([0u8; 32].pack())
+        .expire_since(1000u64.pack())
+        .owner_script_hash([0u8; 32].pack())
         .build();
 
     let buy_intent_script = build_buy_intent_cell(
@@ -148,7 +151,7 @@ fn test_simple_buy_intent() {
         buy_intent_script.clone(),
     ];
 
-    let outputs_data: Vec<Bytes> = vec![
+    let outputs_data: Vec<ckb_testtool::ckb_types::packed::Bytes> = vec![
         800u128.to_le_bytes().to_vec().pack(),
         test_data::G_ASSET_AMOUNT.to_le_bytes().to_vec().pack(),
         Default::default(),
@@ -172,120 +175,131 @@ fn test_simple_buy_intent() {
             .witnesses(witnesses)
             .build(),
     );
+    // print_tx_info(&context, &tx);
     verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
 }
 
 #[test]
 fn test_simple_selling() {
     let mut context = new_context();
-    let (cluster_out_point, _) =
-        crate::spore::build_spore_contract_materials(&mut context, "cluster");
-    let cluster = crate::spore::build_serialized_cluster_data("Spore Cluster", "Test Cluster");
-    let (cluster_id, _, _, _, cluster_dep) =
-        crate::spore::build_cluster_materials(&mut context, &cluster_out_point, cluster, 0, &[]);
-
-    let mut tx = crate::spore::build_single_spore_mint_tx(
-        &mut context,
-        "Hello Spore!".as_bytes().to_vec(),
-        "plain/text",
-        None,
-        Some(cluster_id),
-    );
-    tx = tx.as_advanced_builder().cell_dep(cluster_dep).build();
-
-    let account_cell = build_account_book_cell(&mut context, test_data::G_AccountBookData.clone());
-
-    let smt_hash = [0u8; 32];
-    let member_count = 12u32;
-
-    let dob_selling_data = test_data::G_DobSellingData.clone();
-    let dob_selling = build_dob_selling_script(&mut context, &dob_selling_data);
-    let dob_selling_udt = build_xudt_cell(&mut context, 16, dob_selling.clone());
-
     let def_lock_script: Script = build_always_suc_script(&mut context, &[]);
-    let buy_intent_data = test_data::G_BuyIntentDataBuilder
-        .clone()
-        .change_script_hash([0u8; 32].into())
-        .expire_since(1000u64.to_le_bytes().into())
-        .owner_script_hash([0u8; 32].into())
-        .build();
-
-    let buy_intent_script = build_buy_intent_cell(
-        &mut context,
-        1000,
-        def_lock_script.clone(),
-        &[[0u8; 32], ckb_hash(buy_intent_data.as_slice())].concat(),
+    let cluster = build_cluster(&mut context, ("Spore Cluster", "Test Cluster"));
+    let spore_data = crate::spore::build_serialized_spore_data(
+        "{\"dna\":\"4000000000002\"}".as_bytes().to_vec(),
+        "dob/1",
+        Some(cluster.0.to_vec()),
     );
 
-    tx = tx
-        .as_advanced_builder()
-        .input(
-            CellInput::new_builder()
-                .previous_output(
-                    context.create_cell(
-                        account_cell.clone(),
-                        vec![
-                            10000u128.to_le_bytes().to_vec(),
-                            smt_hash.to_vec(),
-                            member_count.to_le_bytes().to_vec(),
-                        ]
-                        .concat()
-                        .into(),
-                    ),
-                )
-                .build(),
-        )
-        .input(
-            CellInput::new_builder()
-                .previous_output(context.create_cell(
-                    dob_selling_udt.clone(),
-                    test_data::G_ASSET_AMOUNT.to_le_bytes().to_vec().into(),
-                ))
-                .build(),
-        )
-        .input(
-            CellInput::new_builder()
-                .previous_output(context.create_cell(buy_intent_script.clone(), Default::default()))
-                .build(),
-        )
-        .build();
+    let tx = TransactionBuilder::default().build();
 
-    let change_cell = CellOutput::new_builder()
-        .capacity(100.pack())
-        .lock(build_always_suc_script(&mut context, &[2u8; 32]))
-        .build();
+    // generate smt tree
+    let mut smt = new_smt_tree();
+    let old_smt_hash: [u8; 32] = smt.root();
 
-    tx = tx
+    let sport_id = [0u8; 32];
+    let member_info = MemberInfo {
+        spore_id: sport_id,
+        withdrawn_amount: 100,
+        member_type: utils::MemberType::Silver,
+    };
+    smt.update(member_info.clone());
+    let new_smt_hash = smt.root();
+    let smt_proof = smt.proof(Some(member_info.get_key()));
+
+    // Account Book
+    let account_book_data = test_data::G_AccountBookDataBuilder.clone();
+    let account_book_data = account_book_data
+        .cluster_id(cluster.0.pack())
+        .proof(smt_proof.pack())
+        .build();
+    let tx = build_account_book(
+        &mut context,
+        tx,
+        account_book_data.clone(),
+        (10000, 10200),
+        (old_smt_hash, new_smt_hash),
+        (123, 124),
+    );
+    let account_book_script_hash = get_account_script_hash(account_book_data);
+
+    // DOB Selling
+    let dob_selling_data = test_data::G_DobSellingDataBuilder
+        .clone()
+        .spore_data_hash(ckb_hash(spore_data.as_slice()).pack())
+        .account_book_script_hash(account_book_script_hash.pack())
+        .build();
+    let cell_input_dob_selling = {
+        let dob_selling = build_dob_selling_script(&mut context, &dob_selling_data);
+        let dob_selling_udt = build_xudt_cell(&mut context, 16, dob_selling.clone());
+        CellInput::new_builder()
+            .previous_output(context.create_cell(
+                dob_selling_udt.clone(),
+                test_data::G_ASSET_AMOUNT.to_le_bytes().to_vec().into(),
+            ))
+            .build()
+    };
+    let tx = tx
         .as_advanced_builder()
-        .output(account_cell.clone())
-        .output(change_cell)
-        .output_data(
-            vec![
-                10200u128.to_le_bytes().to_vec(),
-                smt_hash.to_vec(),
-                member_count.to_le_bytes().to_vec(),
-            ]
-            .concat()
-            .pack(),
+        .input(cell_input_dob_selling)
+        .output(
+            CellOutput::new_builder()
+                .lock(def_lock_script.clone())
+                .capacity(1000.pack())
+                .build(),
         )
         .output_data(Default::default())
-        .witness(Default::default())
-        .witness(Default::default())
         .witness(
             WitnessArgs::new_builder()
-                .input_type(Some(buy_intent_data.as_bytes()).pack())
+                .lock(Some(dob_selling_data.as_bytes()).pack())
                 .build()
-                .as_slice()
+                .as_bytes()
                 .pack(),
         )
         .build();
 
+    // Buy Intent
+    let buy_intent_data = test_data::G_BuyIntentDataBuilder
+        .clone()
+        .change_script_hash([0u8; 32].pack())
+        .expire_since(1000u64.pack())
+        .owner_script_hash([0u8; 32].pack())
+        .build();
+    let cell_input_buy_intent = {
+        let buy_intent_script = build_buy_intent_cell(
+            &mut context,
+            1000,
+            def_lock_script.clone(),
+            &[
+                account_book_script_hash,
+                ckb_hash(buy_intent_data.as_slice()),
+            ]
+            .concat(),
+        );
+
+        CellInput::new_builder()
+            .previous_output(context.create_cell(buy_intent_script.clone(), Default::default()))
+            .build()
+    };
+
+    let tx = tx
+        .as_advanced_builder()
+        .input(cell_input_buy_intent)
+        .witness(
+            WitnessArgs::new_builder()
+                .input_type(Some(buy_intent_data.as_bytes()).pack())
+                .build()
+                .as_bytes()
+                .pack(),
+        )
+        .build();
+
+    // Spore
+    let tx = build_spore(&mut context, tx, cluster, spore_data);
+
     let tx = context.complete_tx(tx);
+    print_tx_info(&context, &tx);
     verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
 }
-
-#[test]
-fn test_create_account_book() {}
 
 #[test]
 fn test_simple_withdrawal_intent() {}

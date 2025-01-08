@@ -1,27 +1,159 @@
 use ckb_testtool::{
     ckb_error::Error,
     ckb_types::{
-        core::{Cycle, ScriptHashType, TransactionView},
-        packed::{CellOutput, Script},
-        prelude::*,
+        core::{Cycle, TransactionView},
+        packed::CellOutput,
+        prelude::Entity,
     },
     context::Context,
 };
-use std::env;
+
+pub mod build_tx;
+pub mod spore;
 
 #[cfg(test)]
 mod tests;
 
-pub mod spore;
-
 pub const MAX_CYCLES: u64 = 10_000_000;
 
-pub const NAME_ALWAYS_SUC: &str = "always_success";
-pub const NAME_XUDT: &str = "xudt_rce";
-pub const NAME_BUY_INTENT: &str = "buy-intent";
-pub const NAME_DOB_SELLING: &str = "dob-selling";
-pub const NAME_ACCOUNT_BOOK: &str = "account-book";
-pub const NAME_WITHDRAWAL_INTENT: &str = "withdrawal-intent";
+pub const ALWAYS_SUC_NAME: &str = "always_success";
+pub const XUDT_NAME: &str = "xudt_rce";
+pub const SPORE_NAME: &str = "spore";
+pub const CLUSTER_NAME: &str = "cluster";
+pub const BUY_INTENT_NAME: &str = "buy-intent";
+pub const DOB_SELLING_NAME: &str = "dob-selling";
+pub const ACCOUNT_BOOK_NAME: &str = "account-book";
+pub const WITHDRAWAL_INTENT_NAME: &str = "withdrawal-intent";
+
+lazy_static::lazy_static! {
+    static ref BuyIntentCodeHash: [u8; 32] = get_code_hash(BUY_INTENT_NAME);
+    static ref DOBSellingCodeHash: [u8; 32] = get_code_hash(DOB_SELLING_NAME);
+    static ref AccountBookCodeHash: [u8; 32] = get_code_hash(ACCOUNT_BOOK_NAME);
+    static ref WithdrawalIntentCodeHash: [u8; 32] = get_code_hash(WITHDRAWAL_INTENT_NAME);
+}
+
+fn get_code_hash(n: &str) -> [u8; 32] {
+    let mut context = new_context();
+    let out_point = context.deploy_cell_by_name(n);
+    let (_, contract_data) = context.cells.get(&out_point).unwrap();
+    CellOutput::calc_data_hash(contract_data)
+        .as_slice()
+        .try_into()
+        .unwrap()
+}
+
+pub fn print_tx_info(context: &Context, tx: &TransactionView) {
+    use std::collections::HashMap;
+    fn update_hash(bins: &mut HashMap<[u8; 32], String>, name: &str) {
+        let mut c2 = new_context();
+        let op = c2.deploy_cell_by_name(name);
+        let (_, d) = c2.get_cell(&op).unwrap();
+        let h = ckb_hash(&d);
+        bins.insert(h, name.to_string());
+    }
+    let mut bins = HashMap::new();
+    update_hash(&mut bins, "always_success");
+    update_hash(&mut bins, "xudt_rce");
+    update_hash(&mut bins, "spore");
+    update_hash(&mut bins, "cluster");
+
+    update_hash(&mut bins, "buy-intent");
+    update_hash(&mut bins, "dob-selling");
+    update_hash(&mut bins, "withdrawal-intent");
+    update_hash(&mut bins, "account-book");
+
+    let mut d: serde_json::Value = serde_json::from_str(
+        &serde_json::to_string(&context.dump_tx(tx).expect("dump tx info"))
+            .expect("tx format json"),
+    )
+    .unwrap();
+
+    d.get_mut("mock_info")
+        .unwrap()
+        .get_mut("cell_deps")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .all(|f| {
+            let f_data = f.get_mut("data").unwrap();
+            let hash = ckb_hash(&hex::decode(&f_data.as_str().unwrap()[2..]).unwrap());
+
+            let name = bins.get(&hash);
+            if name.is_some() {
+                *f_data = serde_json::to_value(format!("-- {} --", &name.unwrap())).unwrap();
+            }
+            true
+        });
+
+    fn add_contract_name(output: &mut serde_json::Value, bins: &HashMap<[u8; 32], String>) {
+        let script = output.get_mut("lock").unwrap();
+        let code_hash: [u8; 32] =
+            hex::decode(&script.get("code_hash").unwrap().as_str().unwrap()[2..])
+                .unwrap()
+                .try_into()
+                .unwrap();
+        let hash_type = script.get("hash_type").unwrap().as_str().unwrap();
+
+        if hash_type != "type" {
+            let n = bins.get(&code_hash);
+            script.as_object_mut().unwrap().insert(
+                "name".to_string(),
+                serde_json::to_value(n.unwrap()).unwrap(),
+            );
+        }
+
+        let script = output.get_mut("type");
+        if script.is_none() {
+            return;
+        }
+        let script = script.unwrap();
+        let code_hash = script.get("code_hash");
+        if code_hash.is_none() {
+            return;
+        }
+
+        let code_hash: [u8; 32] = hex::decode(&code_hash.unwrap().as_str().unwrap()[2..])
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let hash_type = script.get("hash_type").unwrap().as_str().unwrap();
+
+        if hash_type != "type" {
+            let n = bins.get(&code_hash);
+            script.as_object_mut().unwrap().insert(
+                "name".to_string(),
+                serde_json::to_value(n.unwrap()).unwrap(),
+            );
+        }
+    }
+
+    d.get_mut("mock_info")
+        .unwrap()
+        .get_mut("inputs")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .all(|f| {
+            let output = f.get_mut("output").unwrap();
+            add_contract_name(output, &mut bins);
+            true
+        });
+    d.get_mut("tx")
+        .unwrap()
+        .get_mut("outputs")
+        .unwrap()
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .all(|f| {
+            add_contract_name(f, &mut bins);
+            true
+        });
+
+    println!("tx info: \n{}", d.to_string());
+}
 
 // This helper method runs Context::verify_tx, but in case error happens,
 // it also dumps current transaction to failed_txs folder.
@@ -32,14 +164,16 @@ pub fn verify_and_dump_failed_tx(
 ) -> Result<Cycle, Error> {
     let result = context.verify_tx(tx, max_cycles);
     if result.is_err() {
-        let mut path = env::current_dir().expect("current dir");
-        path.push("failed_txs");
-        std::fs::create_dir_all(&path).expect("create failed_txs dir");
-        let mock_tx = context.dump_tx(tx).expect("dump failed tx");
-        let json = serde_json::to_string_pretty(&mock_tx).expect("json");
-        path.push(format!("0x{:x}.json", tx.hash()));
-        println!("Failed tx written to {:?}", path);
-        std::fs::write(path, json).expect("write");
+        // let mut path = env::current_dir().expect("current dir");
+        // path.push("failed_txs");
+        // std::fs::create_dir_all(&path).expect("create failed_txs dir");
+        // let mock_tx = context.dump_tx(tx).expect("dump failed tx");
+        // let json = serde_json::to_string_pretty(&mock_tx).expect("json");
+        // path.push(format!("0x{:x}.json", tx.hash()));
+        // println!("Failed tx written to {:?}", path);
+        // std::fs::write(path, json).expect("write");
+
+        print_tx_info(context, tx);
     } else {
         println!("Cycles: {}", result.as_ref().unwrap());
     }
@@ -53,103 +187,49 @@ pub fn new_context() -> Context {
     context
 }
 
-pub fn build_always_suc_script(context: &mut Context, args: &[u8]) -> Script {
-    let out_point = context.deploy_cell_by_name(NAME_ALWAYS_SUC);
-
-    context
-        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
-        .expect("always success")
-}
-
-pub fn build_xudt_script(
-    context: &mut Context,
-    owner_script: [u8; 32],
-    other_args: &[u8],
-) -> Option<Script> {
-    let out_point = context.deploy_cell_by_name(NAME_XUDT);
-    Some(
-        context
-            .build_script_with_hash_type(
-                &out_point,
-                ScriptHashType::Data1,
-                [owner_script.to_vec(), other_args.to_vec()].concat().into(),
-            )
-            .expect("build xudt"),
-    )
-}
-
-pub fn build_xudt_cell(context: &mut Context, capacity: u64, lock_script: Script) -> CellOutput {
-    let xudt_script: Option<Script> = build_xudt_script(context, [0u8; 32], &[]);
-
-    CellOutput::new_builder()
-        .capacity(capacity.pack())
-        .lock(lock_script)
-        .type_(xudt_script.pack())
-        .build()
-}
-
-pub fn build_dob_selling_script(
-    context: &mut Context,
-    dob_selling_data: &types::DobSellingData,
-) -> Script {
-    let out_point = context.deploy_cell_by_name(NAME_DOB_SELLING);
-
-    let dob_hash = ckb_hash(dob_selling_data.as_slice());
-    context
-        .build_script_with_hash_type(&out_point, ScriptHashType::Data2, dob_hash.to_vec().into())
-        .expect("build dob-selling script")
-}
-
-pub fn build_buy_intent_script(context: &mut Context, args: &[u8]) -> Script {
-    let out_point = context.deploy_cell_by_name(NAME_BUY_INTENT);
-
-    context
-        .build_script_with_hash_type(&out_point, ScriptHashType::Data2, args.to_vec().into())
-        .expect("build buy-intent script")
-}
-
-pub fn build_buy_intent_cell(
-    context: &mut Context,
-    capacity: u64,
-    lock_script: Script,
-    buy_intent_args: &[u8],
-) -> CellOutput {
-    let t = build_buy_intent_script(context, buy_intent_args);
-
-    CellOutput::new_builder()
-        .capacity(capacity.pack())
-        .lock(lock_script)
-        .type_(Some(t).pack())
-        .build()
-}
-
-pub fn build_account_book_script(context: &mut Context, args: [u8; 32]) -> Script {
-    let out_point = context.deploy_cell_by_name(NAME_ACCOUNT_BOOK);
-    context
-        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
-        .expect("build xudt")
-}
-
-pub fn build_account_book_cell(
-    context: &mut Context,
-    account_book_data: types::AccountBookData,
-) -> CellOutput {
-    let account_book_script =
-        build_account_book_script(context, ckb_hash(account_book_data.as_slice()));
-
-    let xudt_script = build_xudt_script(context, [0u8; 32], &[]);
-
-    CellOutput::new_builder()
-        .capacity(16.pack())
-        .lock(account_book_script)
-        .type_(xudt_script.pack())
-        .build()
-}
-
 pub fn ckb_hash(data: &[u8]) -> [u8; 32] {
     ckb_testtool::ckb_hash::blake2b_256(data)
 }
 
-pub fn to_fixed32(d: &[u8]) -> [u8; 32] {
-    d.try_into().unwrap()
+pub fn new_smt_tree() -> utils::SMT {
+    use utils::{MemberInfo, MemberType, SMT};
+    let mut smt = SMT::default();
+
+    smt.update(MemberInfo {
+        spore_id: [1u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Auther,
+    });
+    smt.update(MemberInfo {
+        spore_id: [2u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Platform,
+    });
+    smt.update(MemberInfo {
+        spore_id: [3u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Golden,
+    });
+    smt.update(MemberInfo {
+        spore_id: [4u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Golden,
+    });
+    smt.update(MemberInfo {
+        spore_id: [5u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Golden,
+    });
+    smt.update(MemberInfo {
+        spore_id: [6u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Silver,
+    });
+    smt.update(MemberInfo {
+        spore_id: [7u8; 32],
+        withdrawn_amount: 100,
+        member_type: MemberType::Silver,
+    });
+
+    smt
 }

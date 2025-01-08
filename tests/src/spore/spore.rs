@@ -1,6 +1,4 @@
 #![allow(dead_code)]
-
-use ckb_testtool::builtin::ALWAYS_SUCCESS;
 use ckb_testtool::ckb_hash::{new_blake2b, Blake2bBuilder};
 use ckb_testtool::ckb_types::core::ScriptHashType;
 use ckb_testtool::ckb_types::{
@@ -262,6 +260,34 @@ pub fn build_single_spore_mint_tx(
     )
 }
 
+pub fn build_spore_mint_tx(
+    context: &mut Context,
+    output_data: Vec<u8>,
+    content_type: &str,
+    input_cell: CellInput,
+    cluster_id: Option<[u8; 32]>,
+) -> TransactionView {
+    let output_data =
+        build_serialized_spore_data(output_data, content_type, cluster_id.map(|v| v.to_vec()));
+
+    let (spore_out_point, spore_script_dep) = build_spore_contract_materials(context, "spore");
+
+    let type_id = build_type_id(&input_cell, 0);
+    let spore_type = build_spore_type_script(context, &spore_out_point, type_id.to_vec().into());
+    let spore_output = build_normal_output_cell_with_type(context, spore_type.clone());
+    let tx = TransactionBuilder::default()
+        .input(input_cell)
+        .output(spore_output)
+        .output_data(output_data.as_slice().pack())
+        .cell_dep(spore_script_dep)
+        .build();
+
+    let action =
+        crate::spore::co_build::build_mint_spore_action(context, type_id, output_data.as_slice());
+    let actions = vec![(spore_type, action)];
+    co_build::complete_co_build_message_with_actions(tx, &actions)
+}
+
 pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
     (0..s.len())
         .step_by(2)
@@ -288,7 +314,7 @@ pub fn build_single_spore_mint_in_cluster_tx(
     let input_ckb = nft_data.total_size() as u64;
 
     let output_ckb = input_ckb;
-    let always_success_out_point = context.deploy_cell(ALWAYS_SUCCESS.clone());
+    let always_success_out_point = context.deploy_cell_by_name("always_success");
 
     // build lock script
     let lock_script = spore_internal::build_always_success_script(context, Default::default());
