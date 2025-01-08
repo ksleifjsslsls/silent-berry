@@ -4,3 +4,9 @@
 [submodule "deps/ckb-production-scripts"]
 	path = deps/ckb-production-scripts
 	url = https://github.com/nervosnetwork/ckb-production-scripts.git
+[submodule "deps/ckb-c-stdlib"]
+	path = deps/ckb-c-stdlib
+	url = https://github.com/nervosnetwork/ckb-c-stdlib.git
+[submodule "deps/ckb-proxy-devrel"]
+	path = deps/ckb-proxy-devrel
+	url = https://github.com/ckb-devrel/ckb-proxy-locks.git
