@@ -183,11 +183,11 @@ fn test_simple_buy_intent() {
 fn test_simple_selling() {
     let mut context = new_context();
     let def_lock_script: Script = build_always_suc_script(&mut context, &[]);
-    let cluster = build_cluster(&mut context, ("Spore Cluster", "Test Cluster"));
+    let (cluster_id, cluster_deps) = build_cluster(&mut context, ("Spore Cluster", "Test Cluster"));
     let spore_data = crate::spore::build_serialized_spore_data(
         "{\"dna\":\"4000000000002\"}".as_bytes().to_vec(),
         "dob/1",
-        Some(cluster.0.to_vec()),
+        Some(cluster_id.to_vec()),
     );
 
     let tx = TransactionBuilder::default().build();
@@ -209,7 +209,7 @@ fn test_simple_selling() {
     // Account Book
     let account_book_data = test_data::G_AccountBookDataBuilder.clone();
     let account_book_data = account_book_data
-        .cluster_id(cluster.0.pack())
+        .cluster_id(cluster_id.pack())
         .proof(smt_proof.pack())
         .build();
     let tx = build_account_book(
@@ -294,7 +294,7 @@ fn test_simple_selling() {
         .build();
 
     // Spore
-    let tx = build_spore(&mut context, tx, cluster, spore_data);
+    let tx = build_spore(&mut context, tx, cluster_deps, spore_data);
 
     let tx = context.complete_tx(tx);
     print_tx_info(&context, &tx);

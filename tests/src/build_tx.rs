@@ -1,6 +1,5 @@
 use ckb_testtool::{
     ckb_types::{
-        bytes::Bytes,
         core::{ScriptHashType, TransactionView},
         packed::{CellDep, CellInput, CellOutput, Script, WitnessArgs},
         prelude::*,
@@ -33,6 +32,17 @@ pub fn build_xudt_script(
             )
             .expect("build xudt"),
     )
+}
+
+pub fn build_input_proxy_script(context: &mut Context, type_script_hash: [u8; 32]) -> Script {
+    let out_point = context.deploy_cell_by_name(INPUT_TYPE_PROXY_LOCK_NAME);
+    context
+        .build_script_with_hash_type(
+            &out_point,
+            ScriptHashType::Data1,
+            type_script_hash.to_vec().into(),
+        )
+        .expect("build input-proxy-lock")
 }
 
 pub fn build_xudt_cell(context: &mut Context, capacity: u64, lock_script: Script) -> CellOutput {
@@ -80,7 +90,10 @@ pub fn build_buy_intent_cell(
         .build()
 }
 
-pub fn build_account_book_script(context: &mut Context, data: types::AccountBookData) -> Script {
+pub fn build_account_book_script(
+    context: &mut Context,
+    data: types::AccountBookData,
+) -> Option<Script> {
     let args = ckb_hash(
         data.as_builder()
             .proof(Default::default())
@@ -88,40 +101,11 @@ pub fn build_account_book_script(context: &mut Context, data: types::AccountBook
             .as_slice(),
     );
     let out_point = context.deploy_cell_by_name(ACCOUNT_BOOK_NAME);
-    context
-        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
-        .expect("build xudt")
-}
-
-pub fn build_account_book_cell(
-    context: &mut Context,
-    account_book_data: types::AccountBookData,
-    smt_root_hash: [u8; 32],
-    member_count: u32,
-) -> (CellInput, CellOutput, Bytes) {
-    let account_book_script = build_account_book_script(context, account_book_data);
-
-    let xudt_script = build_xudt_script(context, [0u8; 32], &[]);
-
-    let cell_output = CellOutput::new_builder()
-        .capacity(16.pack())
-        .lock(account_book_script)
-        .type_(xudt_script.pack())
-        .build();
-
-    let cell_data: Bytes = vec![
-        10000u128.to_le_bytes().to_vec(),
-        smt_root_hash.to_vec(),
-        member_count.to_le_bytes().to_vec(),
-    ]
-    .concat()
-    .into();
-
-    let cell_input = CellInput::new_builder()
-        .previous_output(context.create_cell(cell_output.clone(), cell_data.clone()))
-        .build();
-
-    (cell_input, cell_output, cell_data)
+    Some(
+        context
+            .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
+            .expect("build xudt"),
+    )
 }
 
 pub fn build_account_book(
@@ -134,40 +118,56 @@ pub fn build_account_book(
 ) -> TransactionView {
     let account_book_script = build_account_book_script(context, data.clone());
     let xudt_script = build_xudt_script(context, [0u8; 32], &[]);
+    let account_book_lock_script = build_always_suc_script(context, &[]);
+    let input_proxy_script = build_input_proxy_script(
+        context,
+        account_book_script
+            .as_ref()
+            .unwrap()
+            .calc_script_hash()
+            .unpack(),
+    );
 
     let cell_output = CellOutput::new_builder()
-        .capacity(1000.pack())
-        .lock(account_book_script)
+        .capacity(16.pack())
+        .lock(input_proxy_script)
         .type_(xudt_script.pack())
+        .build();
+    let cell_output2 = CellOutput::new_builder()
+        .capacity(16.pack())
+        .lock(account_book_lock_script)
+        .type_(account_book_script.pack())
         .build();
 
     let cell_input = CellInput::new_builder()
+        .previous_output(context.create_cell(
+            cell_output.clone(),
+            vec![udt.0.to_le_bytes().to_vec()].concat().into(),
+        ))
+        .build();
+    let cell_input2 = CellInput::new_builder()
         .previous_output(
             context.create_cell(
-                cell_output.clone(),
-                vec![
-                    udt.0.to_le_bytes().to_vec(),
-                    smt_hash.0.to_vec(),
-                    member_count.0.to_le_bytes().to_vec(),
-                ]
-                .concat()
-                .into(),
+                cell_output2.clone(),
+                vec![smt_hash.0.to_vec(), member_count.0.to_le_bytes().to_vec()]
+                    .concat()
+                    .into(),
             ),
         )
         .build();
 
     tx.as_advanced_builder()
         .input(cell_input)
+        .input(cell_input2)
         .output(cell_output)
+        .output(cell_output2)
+        .output_data(vec![udt.1.to_le_bytes().to_vec()].concat().pack())
         .output_data(
-            vec![
-                udt.1.to_le_bytes().to_vec(),
-                smt_hash.1.to_vec(),
-                member_count.1.to_le_bytes().to_vec(),
-            ]
-            .concat()
-            .pack(),
+            vec![smt_hash.1.to_vec(), member_count.1.to_le_bytes().to_vec()]
+                .concat()
+                .pack(),
         )
+        .witness(Default::default())
         .witness(
             WitnessArgs::new_builder()
                 .lock(Some(data.as_bytes()).pack())
@@ -191,7 +191,7 @@ pub fn build_cluster(context: &mut Context, cluster: (&str, &str)) -> ([u8; 32],
 pub fn build_spore(
     context: &mut Context,
     tx: TransactionView,
-    cluster: ([u8; 32], CellDep),
+    cluster_deps: CellDep,
     spore_data: spore_types::spore::SporeData,
 ) -> TransactionView {
     let (spore_out_point, spore_script_dep) =
@@ -217,13 +217,15 @@ pub fn build_spore(
     let actions = vec![(spore_type, action)];
 
     let tx = crate::spore::co_build::complete_co_build_message_with_actions(tx, &actions);
-    let tx = tx.as_advanced_builder().cell_dep(cluster.1).build();
+    let tx = tx.as_advanced_builder().cell_dep(cluster_deps).build();
 
     tx
 }
 
 pub fn get_account_script_hash(data: types::AccountBookData) -> [u8; 32] {
     build_account_book_script(&mut new_context(), data)
+        .as_ref()
+        .unwrap()
         .calc_script_hash()
         .as_slice()
         .try_into()

@@ -16,7 +16,8 @@ use ckb_std::{
     ckb_types::prelude::{Entity, Reader, Unpack},
     error::SysError,
     high_level::{
-        load_cell_capacity, load_cell_lock_hash, load_script, load_witness_args, QueryIter,
+        load_cell_capacity, load_cell_lock_hash, load_cell_type_hash, load_script,
+        load_witness_args, QueryIter,
     },
     log,
 };
@@ -193,8 +194,11 @@ fn check_input_dob_selling(dob_selling_hash: [u8; 32]) -> Result<(), Error> {
 
 fn check_account_book(account_book_hash: [u8; 32], amount: u128) -> Result<(), Error> {
     let mut count = 0;
-    QueryIter::new(load_cell_lock_hash, Source::Input).all(|f| {
-        if f == account_book_hash {
+    QueryIter::new(load_cell_type_hash, Source::Input).all(|f| {
+        if f.is_none() {
+            return true;
+        }
+        if f.unwrap() == account_book_hash {
             count += 1;
         }
         true
@@ -207,14 +211,17 @@ fn check_account_book(account_book_hash: [u8; 32], amount: u128) -> Result<(), E
         return Err(Error::AccountBookScriptHash);
     }
 
-    let mut query_iter = QueryIter::new(load_cell_lock_hash, Source::Output);
-    let pos = query_iter.position(|f| f == account_book_hash);
+    let mut query_iter = QueryIter::new(load_cell_type_hash, Source::Output);
+    let pos = query_iter.position(|f| f.is_some() && f.unwrap() == account_book_hash);
     if pos.is_none() {
         log::error!("AccountBook not found in Output");
         return Err(Error::AccountBookScriptHash);
     }
 
-    if query_iter.position(|f| f == account_book_hash).is_some() {
+    if query_iter
+        .position(|f| f.is_some() && f.unwrap() == account_book_hash)
+        .is_some()
+    {
         log::error!("AccountBook not found in Output");
         return Err(Error::AccountBookScriptHash);
     }

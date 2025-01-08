@@ -13,7 +13,7 @@ use ckb_std::{
     ckb_constants::Source,
     ckb_types::prelude::{Entity, Reader, Unpack},
     high_level::{
-        load_cell_data_hash, load_cell_lock_hash, load_script, load_witness_args, QueryIter,
+        load_cell_data_hash, load_cell_type_hash, load_script, load_witness_args, QueryIter,
     },
     log,
 };
@@ -61,11 +61,15 @@ fn check_spore_data(hash: [u8; 32]) -> Result<(), Error> {
 }
 
 fn check_account_book(account_book_hash: [u8; 32]) -> Result<(), Error> {
-    if !QueryIter::new(load_cell_lock_hash, Source::Input).any(|f| f == account_book_hash) {
+    if !QueryIter::new(load_cell_type_hash, Source::Input)
+        .any(|f| f.is_some() && f.unwrap() == account_book_hash)
+    {
         log::error!("AccountBook not found");
         return Err(Error::AccountBookScriptHash);
     }
-    if !QueryIter::new(load_cell_lock_hash, Source::Output).any(|f| f == account_book_hash) {
+    if !QueryIter::new(load_cell_type_hash, Source::Output)
+        .any(|f| f.is_some() && f.unwrap() == account_book_hash)
+    {
         log::error!("AccountBook not found");
         return Err(Error::AccountBookScriptHash);
     }

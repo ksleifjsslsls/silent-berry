@@ -24,12 +24,14 @@ pub const BUY_INTENT_NAME: &str = "buy-intent";
 pub const DOB_SELLING_NAME: &str = "dob-selling";
 pub const ACCOUNT_BOOK_NAME: &str = "account-book";
 pub const WITHDRAWAL_INTENT_NAME: &str = "withdrawal-intent";
+pub const INPUT_TYPE_PROXY_LOCK_NAME: &str = "input-type-proxy-lock";
 
 lazy_static::lazy_static! {
     static ref BuyIntentCodeHash: [u8; 32] = get_code_hash(BUY_INTENT_NAME);
     static ref DOBSellingCodeHash: [u8; 32] = get_code_hash(DOB_SELLING_NAME);
     static ref AccountBookCodeHash: [u8; 32] = get_code_hash(ACCOUNT_BOOK_NAME);
     static ref WithdrawalIntentCodeHash: [u8; 32] = get_code_hash(WITHDRAWAL_INTENT_NAME);
+    static ref InputTypeProxyLockCodeHash: [u8; 32] = get_code_hash(INPUT_TYPE_PROXY_LOCK_NAME);
 }
 
 fn get_code_hash(n: &str) -> [u8; 32] {
@@ -56,6 +58,7 @@ pub fn print_tx_info(context: &Context, tx: &TransactionView) {
     update_hash(&mut bins, "xudt_rce");
     update_hash(&mut bins, "spore");
     update_hash(&mut bins, "cluster");
+    update_hash(&mut bins, INPUT_TYPE_PROXY_LOCK_NAME);
 
     update_hash(&mut bins, "buy-intent");
     update_hash(&mut bins, "dob-selling");
