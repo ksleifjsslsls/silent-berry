@@ -62,6 +62,7 @@ build:
 build-deps:
 	cd deps/spore-contract && capsule build --release
 	cd deps/ckb-production-scripts && make all-via-docker
+	cd deps/ckb-proxy-devrel && ./scripts/reproducible_build_docker -u
 	cp deps/spore-contract/build/release/cluster ./build/3rd-bin/
 	cp deps/spore-contract/build/release/cluster_agent ./build/3rd-bin/
 	cp deps/spore-contract/build/release/cluster_proxy ./build/3rd-bin/
@@ -70,6 +71,7 @@ build-deps:
 	cp deps/spore-contract/build/release/spore_extension_lua ./build/3rd-bin/
 	cp deps/ckb-production-scripts/build/xudt_rce ./build/3rd-bin/
 	cp deps/ckb-production-scripts/build/always_success ./build/3rd-bin/
+	cp deps/ckb-proxy-devrel/build/release/input-type-proxy-lock ./build/3rd-bin
 
 # Run a single make task for a specific contract. For example:
 #
