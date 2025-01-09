@@ -28,12 +28,20 @@ table AccountBookData {
     buy_intent_code_hash: Byte32,
     withdrawal_intent_code_hash: Byte32,
     xudt_script_hash: Byte32,
-
-    auther_id: Byte32,
-    platform_id: Byte32,
     cluster_id: Byte32,
 
+    proof: Bytes,
+}
+
+table AccountBookCellData {
+    smt_root_hash: Byte32,
+    member_count: Uint32,
+
+    owner_script_hash: Byte32,
+    auther_id: Byte32,
+    platform_id: Byte32,
     asset_amount: Uint128,
+
     a_num: Uint32,
     b_num: Uint32,
     c_num: Uint32,
@@ -41,6 +49,4 @@ table AccountBookData {
     b_profit: BProfit,
     c_profit: CProfit,
     d_profit: DProfit,
-
-    proof: Bytes,
 }

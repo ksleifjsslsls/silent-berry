@@ -16,13 +16,13 @@ use ckb_std::{
     ckb_types::prelude::{Entity, Reader, Unpack},
     error::SysError,
     high_level::{
-        load_cell_capacity, load_cell_lock_hash, load_cell_type_hash, load_script,
-        load_witness_args, QueryIter,
+        load_cell_capacity, load_cell_data, load_cell_lock_hash, load_cell_type_hash,
+        load_input_since, load_script, load_witness_args, QueryIter,
     },
-    log,
+    log::{self},
 };
-use types::{AccountBookData, BuyIntentData};
-use utils::HASH_SIZE;
+use types::{AccountBookCellData, BuyIntentData};
+use utils::Hash;
 
 use types::error::SilentBerryError as Error;
 
@@ -49,7 +49,6 @@ fn is_input() -> Result<bool, Error> {
             }
         }
     };
-
     if load_cell_capacity(1, Source::GroupInput).is_ok() {
         log::error!("There can be only one GroupInput");
         return Err(Error::TxStructure);
@@ -69,9 +68,9 @@ fn is_input() -> Result<bool, Error> {
     }
 }
 
-fn load_verified_data(is_input: bool) -> Result<(BuyIntentData, [u8; HASH_SIZE]), Error> {
+fn load_verified_data(is_input: bool) -> Result<(BuyIntentData, Hash), Error> {
     let args = load_script()?.args().raw_data();
-    if args.len() != HASH_SIZE * 2 {
+    if args.len() != utils::HASH_SIZE * 2 {
         log::error!("Args len is incorrect: {}", args.len());
         return Err(Error::VerifiedDataLen);
     }
@@ -97,15 +96,15 @@ fn load_verified_data(is_input: bool) -> Result<(BuyIntentData, [u8; HASH_SIZE])
     types::BuyIntentDataReader::verify(witness.to_vec().as_slice(), false)?;
     let data = BuyIntentData::new_unchecked(witness);
 
-    let hash = utils::ckb_hash(data.as_slice());
-    let intent_data_hash = &args[HASH_SIZE..];
+    let hash = Hash::ckb_hash(data.as_slice());
+    let intent_data_hash: Hash = args[utils::HASH_SIZE..].try_into()?;
 
     if hash != intent_data_hash {
         log::error!("Check intent data hash failed");
         return Err(Error::VerifiedData);
     }
 
-    Ok((data, args[..HASH_SIZE].try_into().unwrap()))
+    Ok((data, args[..utils::HASH_SIZE].try_into()?))
 }
 
 fn check_xudt_script_hash(script_hash: &[u8], index: usize, source: Source) -> Result<(), Error> {
@@ -184,21 +183,18 @@ fn check_udt(asset_amount: u128) -> Result<(), Error> {
     Ok(())
 }
 
-fn check_input_dob_selling(dob_selling_hash: [u8; 32]) -> Result<(), Error> {
-    if !QueryIter::new(load_cell_lock_hash, Source::Input).all(|f| f != dob_selling_hash) {
+fn check_input_dob_selling(dob_selling_hash: Hash) -> Result<(), Error> {
+    if QueryIter::new(load_cell_lock_hash, Source::Input).any(|f| dob_selling_hash == f) {
         Ok(())
     } else {
         Err(Error::DobSellingScriptHash)
     }
 }
 
-fn check_account_book(account_book_hash: [u8; 32], amount: u128) -> Result<(), Error> {
+fn check_account_book(account_book_hash: Hash, amount: u128) -> Result<(), Error> {
     let mut count = 0;
     QueryIter::new(load_cell_type_hash, Source::Input).all(|f| {
-        if f.is_none() {
-            return true;
-        }
-        if f.unwrap() == account_book_hash {
+        if account_book_hash == f.unwrap() {
             count += 1;
         }
         true
@@ -212,29 +208,21 @@ fn check_account_book(account_book_hash: [u8; 32], amount: u128) -> Result<(), E
     }
 
     let mut query_iter = QueryIter::new(load_cell_type_hash, Source::Output);
-    let pos = query_iter.position(|f| f.is_some() && f.unwrap() == account_book_hash);
+    let pos = query_iter.position(|f| account_book_hash == f);
     if pos.is_none() {
         log::error!("AccountBook not found in Output");
         return Err(Error::AccountBookScriptHash);
     }
 
-    if query_iter
-        .position(|f| f.is_some() && f.unwrap() == account_book_hash)
-        .is_some()
-    {
+    if query_iter.position(|f| account_book_hash == f).is_some() {
         log::error!("AccountBook not found in Output");
         return Err(Error::AccountBookScriptHash);
     }
 
-    let accountbook_asset_amount: u128 = AccountBookData::new_unchecked(
-        load_witness_args(pos.unwrap(), Source::Output)?
-            .lock()
-            .to_opt()
-            .ok_or_else(|| Error::Unknow)?
-            .raw_data(),
-    )
-    .asset_amount()
-    .unpack();
+    let accountbook_asset_amount: u128 =
+        AccountBookCellData::new_unchecked(load_cell_data(pos.unwrap(), Source::Output)?.into())
+            .asset_amount()
+            .unpack();
 
     if accountbook_asset_amount != amount {
         log::error!(
@@ -255,7 +243,28 @@ fn program_entry2() -> Result<(), Error> {
     // Check xUDT Script Hash
     let xudt_script_hash = data.xudt_script_hash().as_slice().to_vec();
 
-    if !is_input {
+    if is_input {
+        let ret = check_account_book(accountbook_hash, data.asset_amount().unpack());
+        if ret.is_ok() {
+            check_input_dob_selling(data.dob_selling_script_hash().into())?;
+            Ok(())
+        } else {
+            let since = load_input_since(0, Source::GroupInput)?;
+            let expire_since: u64 = data.expire_since().unpack();
+            if since < expire_since {
+                return ret;
+            }
+
+            let owner_script_hash: [u8; 32] = data.owner_script_hash().unpack();
+            let lock_script_hash = load_cell_lock_hash(1, Source::Output)?;
+            if owner_script_hash != lock_script_hash {
+                log::error!("Revocation failed, not found owner in Output 1");
+                return Err(Error::OnwerScriptHash);
+            }
+
+            Ok(())
+        }
+    } else {
         let dob_selling = ckb_std::high_level::load_cell_lock_hash(1, Source::Output)?;
 
         if dob_selling != data.dob_selling_script_hash().as_slice() {
@@ -288,16 +297,6 @@ fn program_entry2() -> Result<(), Error> {
             return Err(Error::CapacityError);
         }
         Ok(())
-    } else {
-        let ret = check_input_dob_selling(data.dob_selling_script_hash().unpack());
-        if ret.is_ok() {
-            check_account_book(accountbook_hash, data.asset_amount().unpack())?;
-
-            Ok(())
-        } else {
-            // TODO Since
-            Ok(())
-        }
     }
 }
 

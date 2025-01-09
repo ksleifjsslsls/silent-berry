@@ -33,7 +33,7 @@ pub mod smt {
 
     impl MemberInfo {
         pub fn get_key(&self) -> H256 {
-            crate::ckb_hash(&self.spore_id).into()
+            crate::Hash::ckb_hash(&self.spore_id).into()
         }
     }
 

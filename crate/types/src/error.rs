@@ -3,21 +3,25 @@ use num_enum::IntoPrimitive;
 extern crate alloc;
 
 #[repr(u8)]
-#[derive(Debug, IntoPrimitive)]
+#[derive(Debug, IntoPrimitive, PartialEq)]
 pub enum SilentBerryError {
     Unknow = 1,
+    SysError,
+    MolVerificationError,
+    TypeConversion,
     TxStructure,
     VerifiedData,
     VerifiedDataLen,
-    SysError,
-    MolVerificationError,
     DobSellingScriptHash,
     AccountBookScriptHash,
     SporeDataHash,
+    OnwerScriptHash,
+    BuyIntentCodeHash,
     XudtNotFound,
     XudtIncorrect,
     PaymentAmount,
     CapacityError,
+    ExpireSince,
 }
 
 impl From<ckb_std::error::SysError> for SilentBerryError {

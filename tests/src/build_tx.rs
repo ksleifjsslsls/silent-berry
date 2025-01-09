@@ -1,13 +1,71 @@
 use ckb_testtool::{
     ckb_types::{
         core::{ScriptHashType, TransactionView},
-        packed::{CellDep, CellInput, CellOutput, Script, WitnessArgs},
+        packed::{CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs},
         prelude::*,
     },
     context::Context,
 };
+use types::{AccountBookCellData, AccountBookData, DobSellingData};
 
 use crate::*;
+
+pub const XUDT_OWNER_SCRIPT_HASH: [u8; 32] = [0xAA; 32];
+
+pub fn get_script_hash(s: &Script) -> [u8; 32] {
+    s.calc_script_hash().as_slice().try_into().unwrap()
+}
+pub fn get_opt_script_hash(s: &Option<Script>) -> [u8; 32] {
+    s.as_ref()
+        .unwrap()
+        .calc_script_hash()
+        .as_slice()
+        .try_into()
+        .unwrap()
+}
+
+pub fn build_input(outpoint: OutPoint) -> CellInput {
+    CellInput::new_builder().previous_output(outpoint).build()
+}
+
+pub fn build_out_point1(context: &mut Context, lock_script: Script) -> OutPoint {
+    context.create_cell(
+        CellOutput::new_builder()
+            .capacity(1000u64.pack())
+            .lock(lock_script)
+            .build(),
+        Default::default(),
+    )
+}
+pub fn build_out_point2(
+    context: &mut Context,
+    lock_script: Script,
+    type_script: Option<Script>,
+) -> OutPoint {
+    context.create_cell(
+        CellOutput::new_builder()
+            .capacity(1000u64.pack())
+            .lock(lock_script)
+            .type_(type_script.pack())
+            .build(),
+        Default::default(),
+    )
+}
+pub fn build_out_point3(
+    context: &mut Context,
+    lock_script: Script,
+    type_script: Option<Script>,
+    data: ckb_testtool::bytes::Bytes,
+) -> OutPoint {
+    context.create_cell(
+        CellOutput::new_builder()
+            .capacity(1000u64.pack())
+            .lock(lock_script)
+            .type_(type_script.pack())
+            .build(),
+        data,
+    )
+}
 
 pub fn build_always_suc_script(context: &mut Context, args: &[u8]) -> Script {
     let out_point = context.deploy_cell_by_name(ALWAYS_SUC_NAME);
@@ -16,25 +74,37 @@ pub fn build_always_suc_script(context: &mut Context, args: &[u8]) -> Script {
         .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
         .expect("always success")
 }
+pub fn build_user1_script(context: &mut Context) -> Script {
+    build_always_suc_script(context, &[1u8; 32])
+}
+pub fn build_user2_script(context: &mut Context) -> Script {
+    build_always_suc_script(context, &[2u8; 32])
+}
 
-pub fn build_xudt_script(
-    context: &mut Context,
-    owner_script: [u8; 32],
-    other_args: &[u8],
-) -> Option<Script> {
+pub fn build_xudt_script(context: &mut Context) -> Option<Script> {
     let out_point = context.deploy_cell_by_name(XUDT_NAME);
     Some(
         context
             .build_script_with_hash_type(
                 &out_point,
                 ScriptHashType::Data1,
-                [owner_script.to_vec(), other_args.to_vec()].concat().into(),
+                [XUDT_OWNER_SCRIPT_HASH].concat().into(),
             )
             .expect("build xudt"),
     )
 }
 
-pub fn build_input_proxy_script(context: &mut Context, type_script_hash: [u8; 32]) -> Script {
+pub fn build_xudt_cell(context: &mut Context, lock_script: Script) -> CellOutput {
+    let xudt_script: Option<Script> = build_xudt_script(context);
+
+    CellOutput::new_builder()
+        .capacity(16u64.pack())
+        .lock(lock_script)
+        .type_(xudt_script.pack())
+        .build()
+}
+
+fn build_input_proxy_script(context: &mut Context, type_script_hash: [u8; 32]) -> Script {
     let out_point = context.deploy_cell_by_name(INPUT_TYPE_PROXY_LOCK_NAME);
     context
         .build_script_with_hash_type(
@@ -45,21 +115,11 @@ pub fn build_input_proxy_script(context: &mut Context, type_script_hash: [u8; 32
         .expect("build input-proxy-lock")
 }
 
-pub fn build_xudt_cell(context: &mut Context, capacity: u64, lock_script: Script) -> CellOutput {
-    let xudt_script: Option<Script> = build_xudt_script(context, [0u8; 32], &[]);
-
-    CellOutput::new_builder()
-        .capacity(capacity.pack())
-        .lock(lock_script)
-        .type_(xudt_script.pack())
-        .build()
-}
-
 pub fn build_dob_selling_script(
     context: &mut Context,
-    dob_selling_data: &types::DobSellingData,
+    dob_selling_data: &DobSellingData,
 ) -> Script {
-    let out_point = context.deploy_cell_by_name(DOB_SELLING_NAME);
+    let out_point: types::blockchain::OutPoint = context.deploy_cell_by_name(DOB_SELLING_NAME);
 
     let dob_hash = ckb_hash(dob_selling_data.as_slice());
     context
@@ -103,7 +163,7 @@ pub fn build_account_book_script(
     let out_point = context.deploy_cell_by_name(ACCOUNT_BOOK_NAME);
     Some(
         context
-            .build_script_with_hash_type(&out_point, ScriptHashType::Data1, args.to_vec().into())
+            .build_script_with_hash_type(&out_point, ScriptHashType::Data2, args.to_vec().into())
             .expect("build xudt"),
     )
 }
@@ -111,13 +171,12 @@ pub fn build_account_book_script(
 pub fn build_account_book(
     context: &mut Context,
     tx: TransactionView,
-    data: types::AccountBookData,
+    data: AccountBookData,
+    cell_data: (AccountBookCellData, AccountBookCellData),
     udt: (u128, u128),
-    smt_hash: ([u8; 32], [u8; 32]),
-    member_count: (u32, u32),
 ) -> TransactionView {
     let account_book_script = build_account_book_script(context, data.clone());
-    let xudt_script = build_xudt_script(context, [0u8; 32], &[]);
+    let xudt_script = build_xudt_script(context);
     let account_book_lock_script = build_always_suc_script(context, &[]);
     let input_proxy_script = build_input_proxy_script(
         context,
@@ -146,14 +205,7 @@ pub fn build_account_book(
         ))
         .build();
     let cell_input2 = CellInput::new_builder()
-        .previous_output(
-            context.create_cell(
-                cell_output2.clone(),
-                vec![smt_hash.0.to_vec(), member_count.0.to_le_bytes().to_vec()]
-                    .concat()
-                    .into(),
-            ),
-        )
+        .previous_output(context.create_cell(cell_output2.clone(), cell_data.0.as_bytes()))
         .build();
 
     tx.as_advanced_builder()
@@ -162,15 +214,11 @@ pub fn build_account_book(
         .output(cell_output)
         .output(cell_output2)
         .output_data(vec![udt.1.to_le_bytes().to_vec()].concat().pack())
-        .output_data(
-            vec![smt_hash.1.to_vec(), member_count.1.to_le_bytes().to_vec()]
-                .concat()
-                .pack(),
-        )
+        .output_data(cell_data.1.as_bytes().pack())
         .witness(Default::default())
         .witness(
             WitnessArgs::new_builder()
-                .lock(Some(data.as_bytes()).pack())
+                .output_type(Some(data.as_bytes()).pack())
                 .build()
                 .as_bytes()
                 .pack(),
