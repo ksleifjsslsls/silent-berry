@@ -11,7 +11,9 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: recursive
+    - name: Instell rust risc-v
+      run: rustup target add riscv64imac-unknown-none-elf
     - name: Build all
       run: make build
     - name: Run Test
-      run: make test check fmt
+      run: make test check fmt clippy
