@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ckb-std = { version = "0.16.4", features = ["log"] }
 types = { path = "../../crate/types" }
+spore-types = { path = "../../crate/spore-types" }
 utils = { path = "../../crate/utils", features = [ "smt" ] }
 
 [features]

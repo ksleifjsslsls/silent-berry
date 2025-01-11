@@ -7,6 +7,7 @@ name = "account-book"
 version = "0.1.0"
 dependencies = [
  "ckb-std",
+ "spore-types",
  "types",
  "utils",
 ]

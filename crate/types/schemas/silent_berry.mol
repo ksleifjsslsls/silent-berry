@@ -1,5 +1,6 @@
 import blockchain;
 
+# Witness
 table BuyIntentData {
     dob_selling_script_hash: Byte32,
     xudt_script_hash: Byte32,
@@ -11,6 +12,7 @@ table BuyIntentData {
     change_location: Uint32,
 }
 
+# Witness
 table DobSellingData {
     account_book_script_hash: Byte32,
     spore_data_hash: Byte32,
@@ -23,16 +25,19 @@ array BProfit [byte; 3];
 array CProfit [byte; 4];
 array DProfit [byte; 5];
 
+# Witness
 table AccountBookData {
     dob_selling_code_hash: Byte32,
     buy_intent_code_hash: Byte32,
     withdrawal_intent_code_hash: Byte32,
     xudt_script_hash: Byte32,
+    input_type_proxy_lock_code_hash: Byte32,
     cluster_id: Byte32,
 
     proof: Bytes,
 }
 
+# Cell Data
 table AccountBookCellData {
     smt_root_hash: Byte32,
     member_count: Uint32,

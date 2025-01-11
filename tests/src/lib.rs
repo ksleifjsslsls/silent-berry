@@ -32,6 +32,7 @@ lazy_static::lazy_static! {
     static ref AccountBookCodeHash: [u8; 32] = get_code_hash(ACCOUNT_BOOK_NAME);
     static ref WithdrawalIntentCodeHash: [u8; 32] = get_code_hash(WITHDRAWAL_INTENT_NAME);
     static ref InputTypeProxyLockCodeHash: [u8; 32] = get_code_hash(INPUT_TYPE_PROXY_LOCK_NAME);
+    static ref SporeCodeHash: [u8; 32] = get_code_hash(SPORE_NAME);
 }
 
 fn get_code_hash(n: &str) -> [u8; 32] {
@@ -194,45 +195,26 @@ pub fn ckb_hash(data: &[u8]) -> [u8; 32] {
     ckb_testtool::ckb_hash::blake2b_256(data)
 }
 
-pub fn new_smt_tree() -> utils::SMT {
-    use utils::{MemberInfo, MemberType, SMT};
-    let mut smt = SMT::default();
+pub fn new_smt_tree() -> utils::smt::Smt {
+    use utils::smt::*;
+    use utils::Hash;
 
-    smt.update(MemberInfo {
-        spore_id: [1u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Auther,
-    });
-    smt.update(MemberInfo {
-        spore_id: [2u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Platform,
-    });
-    smt.update(MemberInfo {
-        spore_id: [3u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Golden,
-    });
-    smt.update(MemberInfo {
-        spore_id: [4u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Golden,
-    });
-    smt.update(MemberInfo {
-        spore_id: [5u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Golden,
-    });
-    smt.update(MemberInfo {
-        spore_id: [6u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Silver,
-    });
-    smt.update(MemberInfo {
-        spore_id: [7u8; 32],
-        withdrawn_amount: 100,
-        member_type: MemberType::Silver,
-    });
+    let mut smt = Smt::default();
+
+    let mut c: u8 = 0;
+    fn new_hash(count: &mut u8) -> Hash {
+        *count += 1;
+        [*count; 32].into()
+    }
+
+    smt.update(SmtKey::Auther, SmtValue::new(2001));
+    smt.update(SmtKey::Platform, SmtValue::new(0));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(123));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4324));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4444));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(555));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(0));
+    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(300000));
 
     smt
 }

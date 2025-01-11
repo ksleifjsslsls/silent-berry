@@ -11,7 +11,7 @@ ckb_std::default_alloc!();
 
 use ckb_std::{
     ckb_constants::Source,
-    ckb_types::prelude::{Entity, Reader, Unpack},
+    ckb_types::prelude::{Entity, Reader},
     high_level::{
         load_cell_data, load_cell_data_hash, load_cell_lock_hash, load_cell_type,
         load_cell_type_hash, load_script, load_witness_args, QueryIter,
@@ -25,8 +25,8 @@ use utils::Hash;
 fn load_verified_data() -> Result<DobSellingData, Error> {
     let args = load_script()?.args().raw_data();
     if args.len() != utils::HASH_SIZE {
-        log::error!("Args len is incorrect: {}", args.len());
-        return Err(Error::VerifiedDataLen);
+        log::error!("Args len is not {} {}", utils::HASH_SIZE, args.len());
+        return Err(Error::VerifiedData);
     }
 
     let witness = load_witness_args(0, Source::GroupInput)?;
@@ -34,7 +34,7 @@ fn load_verified_data() -> Result<DobSellingData, Error> {
         .lock()
         .to_opt()
         .ok_or_else(|| {
-            log::error!("load witnesses failed");
+            log::error!("Load witnesses failed, lock is None");
             Error::TxStructure
         })?
         .raw_data();
@@ -46,42 +46,39 @@ fn load_verified_data() -> Result<DobSellingData, Error> {
     let intent_data_hash: Hash = args.try_into()?;
 
     if hash != intent_data_hash {
-        log::error!("Check intent data hash failed");
+        log::error!("Witness data Hash != Args");
         return Err(Error::VerifiedData);
     }
 
     Ok(data)
 }
 
-fn check_spore_data(hash: [u8; 32]) -> Result<(), Error> {
-    if QueryIter::new(load_cell_data_hash, Source::Output).all(|f| f != hash) {
-        Err(Error::SporeDataHash)
+fn check_spore_data(hash: Hash) -> Result<(), Error> {
+    if QueryIter::new(load_cell_data_hash, Source::Output).all(|f| hash != f) {
+        // log::error!("Spore Error, SporeData does not match Hash");
+        Err(Error::CheckScript)
     } else {
         Ok(())
     }
 }
 
-fn check_account_book(account_book_hash: [u8; 32]) -> Result<(), Error> {
-    if !QueryIter::new(load_cell_type_hash, Source::Input)
-        .any(|f| f.is_some() && f.unwrap() == account_book_hash)
-    {
-        log::error!("AccountBook not found");
-        return Err(Error::AccountBookScriptHash);
+fn check_account_book(account_book_hash: Hash) -> Result<(), Error> {
+    if !QueryIter::new(load_cell_type_hash, Source::Input).any(|f| account_book_hash == f) {
+        log::error!("AccountBook not found in Input");
+        return Err(Error::CheckScript);
     }
-    if !QueryIter::new(load_cell_type_hash, Source::Output)
-        .any(|f| f.is_some() && f.unwrap() == account_book_hash)
-    {
-        log::error!("AccountBook not found");
-        return Err(Error::AccountBookScriptHash);
+    if !QueryIter::new(load_cell_type_hash, Source::Output).any(|f| account_book_hash == f) {
+        log::error!("AccountBook not found in Output");
+        return Err(Error::CheckScript);
     }
 
     Ok(())
 }
 
-fn check_buy_intent_code_hash(hash: [u8; 32]) -> Result<(), Error> {
+fn check_buy_intent_code_hash(hash: Hash) -> Result<(), Error> {
     QueryIter::new(load_cell_type, Source::Input).any(|f| {
         if f.is_some() {
-            let h: [u8; 32] = f.unwrap().code_hash().unpack();
+            let h: Hash = f.unwrap().code_hash().into();
             h == hash
         } else {
             false
@@ -93,27 +90,30 @@ fn check_buy_intent_code_hash(hash: [u8; 32]) -> Result<(), Error> {
 
 fn revocation(data: DobSellingData) -> Result<(), Error> {
     let hash = load_cell_lock_hash(0, Source::Output)?;
-    let owner_script_hash: [u8; 32] = data.owner_script_hash().unpack();
-    if hash != owner_script_hash {
+    let owner_script_hash: Hash = data.owner_script_hash().into();
+    if owner_script_hash != hash {
         log::error!("Revocation failed, owner hash");
-        return Err(Error::OnwerScriptHash);
+        return Err(Error::CheckScript);
     }
 
     let amount1 = u128::from_le_bytes(load_cell_data(0, Source::Input)?.try_into().unwrap());
     let amount2 = u128::from_le_bytes(load_cell_data(0, Source::Output)?.try_into().unwrap());
     if amount1 != amount2 {
         log::error!("Revocation failed, input: {}, output: {}", amount1, amount2);
-        return Err(Error::XudtIncorrect);
+        return Err(Error::CheckXUDT);
     }
 
-    let buy_intent_code_hash: [u8; 32] = data.buy_intent_code_hash().unpack();
-    let lock_code_hash: [u8; 32] = load_cell_type(1, Source::Input)?
-        .ok_or_else(|| Error::TxStructure)?
+    let buy_intent_code_hash: Hash = data.buy_intent_code_hash().into();
+    let lock_code_hash: Hash = load_cell_type(1, Source::Input)?
+        .ok_or_else(|| {
+            log::error!("Input[1] type script is None");
+            Error::TxStructure
+        })?
         .code_hash()
-        .unpack();
+        .into();
     if buy_intent_code_hash != lock_code_hash {
         log::error!("Revocation failed, Buy Intent not fount in Input 1");
-        return Err(Error::BuyIntentCodeHash);
+        return Err(Error::CheckScript);
     }
 
     Ok(())
@@ -121,12 +121,12 @@ fn revocation(data: DobSellingData) -> Result<(), Error> {
 
 fn program_entry2() -> Result<(), Error> {
     let data = load_verified_data()?;
-    let ret = check_spore_data(data.spore_data_hash().unpack());
-    if ret.is_err() && ret.unwrap_err() == Error::SporeDataHash {
+    let ret = check_spore_data(data.spore_data_hash().into());
+    if ret.is_err() && ret.unwrap_err() == Error::CheckScript {
         revocation(data)?;
     } else {
-        check_account_book(data.account_book_script_hash().unpack())?;
-        check_buy_intent_code_hash(data.buy_intent_code_hash().unpack())?;
+        check_account_book(data.account_book_script_hash().into())?;
+        check_buy_intent_code_hash(data.buy_intent_code_hash().into())?;
     }
     Ok(())
 }

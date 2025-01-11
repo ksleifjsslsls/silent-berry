@@ -1803,6 +1803,12 @@ impl ::core::fmt::Display for AccountBookData {
             self.withdrawal_intent_code_hash()
         )?;
         write!(f, ", {}: {}", "xudt_script_hash", self.xudt_script_hash())?;
+        write!(
+            f,
+            ", {}: {}",
+            "input_type_proxy_lock_code_hash",
+            self.input_type_proxy_lock_code_hash()
+        )?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "proof", self.proof())?;
         let extra_count = self.count_extra_fields();
@@ -1819,16 +1825,17 @@ impl ::core::default::Default for AccountBookData {
     }
 }
 impl AccountBookData {
-    const DEFAULT_VALUE: [u8; 192] = [
-        192, 0, 0, 0, 28, 0, 0, 0, 60, 0, 0, 0, 92, 0, 0, 0, 124, 0, 0, 0, 156, 0, 0, 0, 188, 0, 0,
+    const DEFAULT_VALUE: [u8; 228] = [
+        228, 0, 0, 0, 32, 0, 0, 0, 64, 0, 0, 0, 96, 0, 0, 0, 128, 0, 0, 0, 160, 0, 0, 0, 192, 0, 0,
+        0, 224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    pub const FIELD_COUNT: usize = 6;
+    pub const FIELD_COUNT: usize = 7;
     pub fn total_size(&self) -> usize {
         molecule::unpack_number(self.as_slice()) as usize
     }
@@ -1869,17 +1876,23 @@ impl AccountBookData {
         let end = molecule::unpack_number(&slice[20..]) as usize;
         Byte32::new_unchecked(self.0.slice(start..end))
     }
-    pub fn cluster_id(&self) -> Byte32 {
+    pub fn input_type_proxy_lock_code_hash(&self) -> Byte32 {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[20..]) as usize;
         let end = molecule::unpack_number(&slice[24..]) as usize;
         Byte32::new_unchecked(self.0.slice(start..end))
     }
-    pub fn proof(&self) -> Bytes {
+    pub fn cluster_id(&self) -> Byte32 {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[24..]) as usize;
+        let end = molecule::unpack_number(&slice[28..]) as usize;
+        Byte32::new_unchecked(self.0.slice(start..end))
+    }
+    pub fn proof(&self) -> Bytes {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[28..]) as usize;
         if self.has_extra_fields() {
-            let end = molecule::unpack_number(&slice[28..]) as usize;
+            let end = molecule::unpack_number(&slice[32..]) as usize;
             Bytes::new_unchecked(self.0.slice(start..end))
         } else {
             Bytes::new_unchecked(self.0.slice(start..))
@@ -1916,6 +1929,7 @@ impl molecule::prelude::Entity for AccountBookData {
             .buy_intent_code_hash(self.buy_intent_code_hash())
             .withdrawal_intent_code_hash(self.withdrawal_intent_code_hash())
             .xudt_script_hash(self.xudt_script_hash())
+            .input_type_proxy_lock_code_hash(self.input_type_proxy_lock_code_hash())
             .cluster_id(self.cluster_id())
             .proof(self.proof())
     }
@@ -1958,6 +1972,12 @@ impl<'r> ::core::fmt::Display for AccountBookDataReader<'r> {
             self.withdrawal_intent_code_hash()
         )?;
         write!(f, ", {}: {}", "xudt_script_hash", self.xudt_script_hash())?;
+        write!(
+            f,
+            ", {}: {}",
+            "input_type_proxy_lock_code_hash",
+            self.input_type_proxy_lock_code_hash()
+        )?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "proof", self.proof())?;
         let extra_count = self.count_extra_fields();
@@ -1968,7 +1988,7 @@ impl<'r> ::core::fmt::Display for AccountBookDataReader<'r> {
     }
 }
 impl<'r> AccountBookDataReader<'r> {
-    pub const FIELD_COUNT: usize = 6;
+    pub const FIELD_COUNT: usize = 7;
     pub fn total_size(&self) -> usize {
         molecule::unpack_number(self.as_slice()) as usize
     }
@@ -2009,17 +2029,23 @@ impl<'r> AccountBookDataReader<'r> {
         let end = molecule::unpack_number(&slice[20..]) as usize;
         Byte32Reader::new_unchecked(&self.as_slice()[start..end])
     }
-    pub fn cluster_id(&self) -> Byte32Reader<'r> {
+    pub fn input_type_proxy_lock_code_hash(&self) -> Byte32Reader<'r> {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[20..]) as usize;
         let end = molecule::unpack_number(&slice[24..]) as usize;
         Byte32Reader::new_unchecked(&self.as_slice()[start..end])
     }
-    pub fn proof(&self) -> BytesReader<'r> {
+    pub fn cluster_id(&self) -> Byte32Reader<'r> {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[24..]) as usize;
+        let end = molecule::unpack_number(&slice[28..]) as usize;
+        Byte32Reader::new_unchecked(&self.as_slice()[start..end])
+    }
+    pub fn proof(&self) -> BytesReader<'r> {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[28..]) as usize;
         if self.has_extra_fields() {
-            let end = molecule::unpack_number(&slice[28..]) as usize;
+            let end = molecule::unpack_number(&slice[32..]) as usize;
             BytesReader::new_unchecked(&self.as_slice()[start..end])
         } else {
             BytesReader::new_unchecked(&self.as_slice()[start..])
@@ -2077,7 +2103,8 @@ impl<'r> molecule::prelude::Reader<'r> for AccountBookDataReader<'r> {
         Byte32Reader::verify(&slice[offsets[2]..offsets[3]], compatible)?;
         Byte32Reader::verify(&slice[offsets[3]..offsets[4]], compatible)?;
         Byte32Reader::verify(&slice[offsets[4]..offsets[5]], compatible)?;
-        BytesReader::verify(&slice[offsets[5]..offsets[6]], compatible)?;
+        Byte32Reader::verify(&slice[offsets[5]..offsets[6]], compatible)?;
+        BytesReader::verify(&slice[offsets[6]..offsets[7]], compatible)?;
         Ok(())
     }
 }
@@ -2087,11 +2114,12 @@ pub struct AccountBookDataBuilder {
     pub(crate) buy_intent_code_hash: Byte32,
     pub(crate) withdrawal_intent_code_hash: Byte32,
     pub(crate) xudt_script_hash: Byte32,
+    pub(crate) input_type_proxy_lock_code_hash: Byte32,
     pub(crate) cluster_id: Byte32,
     pub(crate) proof: Bytes,
 }
 impl AccountBookDataBuilder {
-    pub const FIELD_COUNT: usize = 6;
+    pub const FIELD_COUNT: usize = 7;
     pub fn dob_selling_code_hash(mut self, v: Byte32) -> Self {
         self.dob_selling_code_hash = v;
         self
@@ -2106,6 +2134,10 @@ impl AccountBookDataBuilder {
     }
     pub fn xudt_script_hash(mut self, v: Byte32) -> Self {
         self.xudt_script_hash = v;
+        self
+    }
+    pub fn input_type_proxy_lock_code_hash(mut self, v: Byte32) -> Self {
+        self.input_type_proxy_lock_code_hash = v;
         self
     }
     pub fn cluster_id(mut self, v: Byte32) -> Self {
@@ -2126,6 +2158,7 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
             + self.buy_intent_code_hash.as_slice().len()
             + self.withdrawal_intent_code_hash.as_slice().len()
             + self.xudt_script_hash.as_slice().len()
+            + self.input_type_proxy_lock_code_hash.as_slice().len()
             + self.cluster_id.as_slice().len()
             + self.proof.as_slice().len()
     }
@@ -2141,6 +2174,8 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
         offsets.push(total_size);
         total_size += self.xudt_script_hash.as_slice().len();
         offsets.push(total_size);
+        total_size += self.input_type_proxy_lock_code_hash.as_slice().len();
+        offsets.push(total_size);
         total_size += self.cluster_id.as_slice().len();
         offsets.push(total_size);
         total_size += self.proof.as_slice().len();
@@ -2152,6 +2187,7 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
         writer.write_all(self.buy_intent_code_hash.as_slice())?;
         writer.write_all(self.withdrawal_intent_code_hash.as_slice())?;
         writer.write_all(self.xudt_script_hash.as_slice())?;
+        writer.write_all(self.input_type_proxy_lock_code_hash.as_slice())?;
         writer.write_all(self.cluster_id.as_slice())?;
         writer.write_all(self.proof.as_slice())?;
         Ok(())

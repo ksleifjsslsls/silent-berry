@@ -1,12 +1,13 @@
 use ckb_testtool::{
     ckb_types::{
         core::{ScriptHashType, TransactionView},
-        packed::{CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs},
+        packed::{Bytes, CellDep, CellInput, CellOutput, OutPoint, Script, WitnessArgs},
         prelude::*,
     },
     context::Context,
 };
 use types::{AccountBookCellData, AccountBookData, DobSellingData};
+use utils::Hash;
 
 use crate::*;
 
@@ -270,6 +271,27 @@ pub fn build_spore(
     tx
 }
 
+pub fn get_spore_id(tx: &TransactionView) -> [u8; 32] {
+    let spore_output = tx.outputs().into_iter().find(|f| {
+        if let Some(t) = f.type_().to_opt() {
+            t.code_hash().as_slice() == *SporeCodeHash
+        } else {
+            false
+        }
+    });
+
+    spore_output
+        .unwrap()
+        .type_()
+        .to_opt()
+        .unwrap()
+        .args()
+        .raw_data()
+        .to_vec()
+        .try_into()
+        .unwrap()
+}
+
 pub fn get_account_script_hash(data: types::AccountBookData) -> [u8; 32] {
     build_account_book_script(&mut new_context(), data)
         .as_ref()
@@ -278,4 +300,66 @@ pub fn get_account_script_hash(data: types::AccountBookData) -> [u8; 32] {
         .as_slice()
         .try_into()
         .unwrap()
+}
+
+pub fn update_accountbook(
+    context: &mut Context,
+    tx: TransactionView,
+    smt_hash: (Hash, Hash),
+    proof: Vec<u8>,
+) -> TransactionView {
+    let input_pos = tx
+        .inputs()
+        .into_iter()
+        .position(|f| {
+            if let Some((output, _)) = context.get_cell(&f.previous_output()) {
+                if let Some(type_script) = output.type_().to_opt() {
+                    let type_script_code_hash: Hash = type_script.code_hash().into();
+                    if type_script_code_hash == *AccountBookCodeHash {
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        })
+        .unwrap();
+    let outpoint = tx.inputs().get(input_pos).unwrap().previous_output();
+    let (_, cell_data) = context.cells.get_mut(&outpoint).unwrap();
+
+    let abcd = AccountBookCellData::new_unchecked(cell_data.clone())
+        .as_builder()
+        .smt_root_hash(smt_hash.0.into())
+        .build();
+    *cell_data = abcd.as_slice().to_vec().into();
+
+    let mut outputs_data: Vec<Bytes> = tx.outputs_data().into_iter().map(|f| f).collect();
+    let cell_data =
+        AccountBookCellData::new_unchecked(outputs_data.get(input_pos).unwrap().clone().unpack())
+            .as_builder()
+            .smt_root_hash(smt_hash.1.into())
+            .build();
+    *outputs_data.get_mut(input_pos).unwrap() = cell_data.as_slice().to_vec().pack();
+    let tx = tx
+        .as_advanced_builder()
+        .set_outputs_data(outputs_data)
+        .build();
+
+    let mut witnesses: Vec<Bytes> = tx.witnesses().into_iter().map(|f| f).collect();
+    let witness = WitnessArgs::new_unchecked(witnesses.get(input_pos).unwrap().unpack());
+    let abd = AccountBookData::new_unchecked(witness.output_type().to_opt().unwrap().unpack())
+        .as_builder()
+        .proof(proof.pack())
+        .build();
+    let witness = witness
+        .as_builder()
+        .output_type(Some(abd.as_bytes()).pack())
+        .build();
+    *witnesses.get_mut(input_pos).unwrap() = witness.as_bytes().pack();
+
+    tx.as_advanced_builder().set_witnesses(witnesses).build()
 }

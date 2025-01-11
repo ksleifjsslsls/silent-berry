@@ -6,22 +6,22 @@ extern crate alloc;
 #[derive(Debug, IntoPrimitive, PartialEq)]
 pub enum SilentBerryError {
     Unknow = 1,
+
     SysError,
-    MolVerificationError,
+    MolVerification,
     TypeConversion,
+    ParseWitness,
+
     TxStructure,
     VerifiedData,
-    VerifiedDataLen,
-    DobSellingScriptHash,
-    AccountBookScriptHash,
-    SporeDataHash,
-    OnwerScriptHash,
-    BuyIntentCodeHash,
-    XudtNotFound,
-    XudtIncorrect,
-    PaymentAmount,
+    CheckXUDT,
+    CheckScript,
+    Spore,
+    Smt,
+
     CapacityError,
     ExpireSince,
+    AccountBookModified,
 }
 
 impl From<ckb_std::error::SysError> for SilentBerryError {
@@ -34,6 +34,6 @@ impl From<ckb_std::error::SysError> for SilentBerryError {
 impl From<molecule::error::VerificationError> for SilentBerryError {
     fn from(value: molecule::error::VerificationError) -> Self {
         ckb_std::log::warn!("MolVerificationError ({:?}) to SilentBerryError", value);
-        Self::MolVerificationError
+        Self::MolVerification
     }
 }

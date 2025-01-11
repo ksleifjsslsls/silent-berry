@@ -71,8 +71,8 @@ fn is_input() -> Result<bool, Error> {
 fn load_verified_data(is_input: bool) -> Result<(BuyIntentData, Hash), Error> {
     let args = load_script()?.args().raw_data();
     if args.len() != utils::HASH_SIZE * 2 {
-        log::error!("Args len is incorrect: {}", args.len());
-        return Err(Error::VerifiedDataLen);
+        log::error!("Args len is not {} {}", utils::HASH_SIZE * 2, args.len());
+        return Err(Error::VerifiedData);
     }
 
     let source = if is_input {
@@ -107,87 +107,12 @@ fn load_verified_data(is_input: bool) -> Result<(BuyIntentData, Hash), Error> {
     Ok((data, args[..utils::HASH_SIZE].try_into()?))
 }
 
-fn check_xudt_script_hash(script_hash: &[u8], index: usize, source: Source) -> Result<(), Error> {
-    let xudt_script_hash = ckb_std::high_level::load_cell_type_hash(index, source)?;
-
-    if xudt_script_hash.is_none() {
-        log::error!("xUDT Not Found, index: {}, source: {:?}", index, source);
-        return Err(Error::XudtNotFound);
-    }
-
-    if script_hash == xudt_script_hash.as_ref().unwrap() {
-        Ok(())
-    } else {
-        log::error!(
-            "xUDT Script Hash, index: {}, source: {:?}\n{:02x?}\n{:02x?}",
-            index,
-            source,
-            script_hash,
-            xudt_script_hash.as_ref().unwrap()
-        );
-        Err(Error::XudtIncorrect)
-    }
-}
-
-fn check_udt(asset_amount: u128) -> Result<(), Error> {
-    let in_udt = u128::from_le_bytes(
-        ckb_std::high_level::load_cell_data(0, Source::Input)?
-            .try_into()
-            .map_err(|d| {
-                log::error!("Parse input xudt data failed: {:02x?}", d);
-                Error::XudtIncorrect
-            })?,
-    );
-
-    let out_udt0 = u128::from_le_bytes(
-        ckb_std::high_level::load_cell_data(0, Source::Output)?
-            .try_into()
-            .map_err(|d| {
-                log::error!("Parse output0 xudt data failed: {:02x?}", d);
-                Error::XudtIncorrect
-            })?,
-    );
-    let out_udt1 = u128::from_le_bytes(
-        ckb_std::high_level::load_cell_data(1, Source::Output)?
-            .try_into()
-            .map_err(|d| {
-                log::error!("Parse output1 xudt data failed: {:02x?}", d);
-                Error::XudtIncorrect
-            })?,
-    );
-
-    if in_udt
-        != out_udt0.checked_add(out_udt1).ok_or_else(|| {
-            log::error!("Output xudt addition error, {} + {}", out_udt0, out_udt1);
-            Error::XudtIncorrect
-        })?
-    {
-        log::error!(
-            "xUDT The total number before and after is different, input: {}, output: {} {}",
-            in_udt,
-            out_udt0,
-            out_udt1
-        );
-        return Err(Error::XudtIncorrect);
-    }
-
-    if asset_amount != out_udt1 {
-        log::error!(
-            "Not paid in full, {} should be paid, {} actually paid",
-            asset_amount,
-            out_udt1
-        );
-        return Err(Error::PaymentAmount);
-    }
-
-    Ok(())
-}
-
 fn check_input_dob_selling(dob_selling_hash: Hash) -> Result<(), Error> {
     if QueryIter::new(load_cell_lock_hash, Source::Input).any(|f| dob_selling_hash == f) {
         Ok(())
     } else {
-        Err(Error::DobSellingScriptHash)
+        log::error!("DobSelling not found");
+        Err(Error::CheckScript)
     }
 }
 
@@ -204,19 +129,18 @@ fn check_account_book(account_book_hash: Hash, amount: u128) -> Result<(), Error
             "AccountBook quantity error in Input, Need 1, Found {}",
             count
         );
-        return Err(Error::AccountBookScriptHash);
+        return Err(Error::CheckScript);
     }
 
     let mut query_iter = QueryIter::new(load_cell_type_hash, Source::Output);
     let pos = query_iter.position(|f| account_book_hash == f);
     if pos.is_none() {
         log::error!("AccountBook not found in Output");
-        return Err(Error::AccountBookScriptHash);
+        return Err(Error::CheckScript);
     }
-
     if query_iter.position(|f| account_book_hash == f).is_some() {
         log::error!("AccountBook not found in Output");
-        return Err(Error::AccountBookScriptHash);
+        return Err(Error::CheckScript);
     }
 
     let accountbook_asset_amount: u128 =
@@ -241,7 +165,7 @@ fn program_entry2() -> Result<(), Error> {
     let (data, accountbook_hash) = load_verified_data(is_input)?;
 
     // Check xUDT Script Hash
-    let xudt_script_hash = data.xudt_script_hash().as_slice().to_vec();
+    let xudt_script_hash: Hash = data.xudt_script_hash().into();
 
     if is_input {
         let ret = check_account_book(accountbook_hash, data.asset_amount().unpack());
@@ -255,11 +179,11 @@ fn program_entry2() -> Result<(), Error> {
                 return ret;
             }
 
-            let owner_script_hash: [u8; 32] = data.owner_script_hash().unpack();
+            let owner_script_hash: Hash = data.owner_script_hash().into();
             let lock_script_hash = load_cell_lock_hash(1, Source::Output)?;
             if owner_script_hash != lock_script_hash {
                 log::error!("Revocation failed, not found owner in Output 1");
-                return Err(Error::OnwerScriptHash);
+                return Err(Error::CheckScript);
             }
 
             Ok(())
@@ -269,16 +193,33 @@ fn program_entry2() -> Result<(), Error> {
 
         if dob_selling != data.dob_selling_script_hash().as_slice() {
             log::error!("Dob Selling Script Hash failed");
-            return Err(Error::DobSellingScriptHash);
+            return Err(Error::CheckScript);
         }
 
-        check_xudt_script_hash(&xudt_script_hash, 0, Source::Input)?;
-        check_xudt_script_hash(&xudt_script_hash, 0, Source::Output)?;
-        check_xudt_script_hash(&xudt_script_hash, 1, Source::Output)?;
+        let udt_info = utils::UDTInfo::new(xudt_script_hash)?;
+        udt_info.check_udt()?;
 
-        let asset_amount = data.asset_amount().unpack();
+        if udt_info.inputs.len() != 1 {}
+        if udt_info.outputs.len() != 2 {}
 
-        check_udt(asset_amount)?;
+        if udt_info.inputs[0].1 != 0 || udt_info.outputs[0].1 != 0 || udt_info.outputs[1].1 != 1 {
+            log::error!(
+                "xUDT position failed, inputs: {:?}, output: {:?}",
+                udt_info.inputs,
+                udt_info.outputs
+            );
+            return Err(Error::CheckXUDT);
+        }
+
+        let asset_amount: u128 = data.asset_amount().unpack();
+        if udt_info.outputs[1].0 != asset_amount {
+            log::error!(
+                "Incorrect xUDT payment: Need: {}, Actually: {}",
+                asset_amount,
+                udt_info.outputs[0].0
+            );
+            return Err(Error::CheckXUDT);
+        }
 
         let capacity = load_cell_capacity(2, Source::Output)?;
 

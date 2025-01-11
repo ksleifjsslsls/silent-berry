@@ -11,3 +11,4 @@ types = { path = "../types" }
 
 [features]
 smt = [ "sparse-merkle-tree" ]
+std = []
