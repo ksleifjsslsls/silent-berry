@@ -200,10 +200,9 @@ pub fn build_account_book(
         .build();
 
     let cell_input = CellInput::new_builder()
-        .previous_output(context.create_cell(
-            cell_output.clone(),
-            vec![udt.0.to_le_bytes().to_vec()].concat().into(),
-        ))
+        .previous_output(
+            context.create_cell(cell_output.clone(), udt.0.to_le_bytes().to_vec().into()),
+        )
         .build();
     let cell_input2 = CellInput::new_builder()
         .previous_output(context.create_cell(cell_output2.clone(), cell_data.0.as_bytes()))
@@ -214,7 +213,7 @@ pub fn build_account_book(
         .input(cell_input2)
         .output(cell_output)
         .output(cell_output2)
-        .output_data(vec![udt.1.to_le_bytes().to_vec()].concat().pack())
+        .output_data(udt.1.to_le_bytes().to_vec().pack())
         .output_data(cell_data.1.as_bytes().pack())
         .witness(Default::default())
         .witness(
@@ -266,9 +265,7 @@ pub fn build_spore(
     let actions = vec![(spore_type, action)];
 
     let tx = crate::spore::co_build::complete_co_build_message_with_actions(tx, &actions);
-    let tx = tx.as_advanced_builder().cell_dep(cluster_deps).build();
-
-    tx
+    tx.as_advanced_builder().cell_dep(cluster_deps).build()
 }
 
 pub fn get_spore_id(tx: &TransactionView) -> [u8; 32] {
@@ -315,11 +312,7 @@ pub fn update_accountbook(
             if let Some((output, _)) = context.get_cell(&f.previous_output()) {
                 if let Some(type_script) = output.type_().to_opt() {
                     let type_script_code_hash: Hash = type_script.code_hash().into();
-                    if type_script_code_hash == *AccountBookCodeHash {
-                        true
-                    } else {
-                        false
-                    }
+                    type_script_code_hash == *AccountBookCodeHash
                 } else {
                     false
                 }
@@ -337,7 +330,7 @@ pub fn update_accountbook(
         .build();
     *cell_data = abcd.as_slice().to_vec().into();
 
-    let mut outputs_data: Vec<Bytes> = tx.outputs_data().into_iter().map(|f| f).collect();
+    let mut outputs_data: Vec<Bytes> = tx.outputs_data().into_iter().collect();
     let cell_data =
         AccountBookCellData::new_unchecked(outputs_data.get(input_pos).unwrap().clone().unpack())
             .as_builder()
@@ -349,7 +342,7 @@ pub fn update_accountbook(
         .set_outputs_data(outputs_data)
         .build();
 
-    let mut witnesses: Vec<Bytes> = tx.witnesses().into_iter().map(|f| f).collect();
+    let mut witnesses: Vec<Bytes> = tx.witnesses().into_iter().collect();
     let witness = WitnessArgs::new_unchecked(witnesses.get(input_pos).unwrap().unpack());
     let abd = AccountBookData::new_unchecked(witness.output_type().to_opt().unwrap().unpack())
         .as_builder()

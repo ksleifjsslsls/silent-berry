@@ -141,7 +141,7 @@ pub fn print_tx_info(context: &Context, tx: &TransactionView) {
         .iter_mut()
         .all(|f| {
             let output = f.get_mut("output").unwrap();
-            add_contract_name(output, &mut bins);
+            add_contract_name(output, &bins);
             true
         });
     d.get_mut("tx")
@@ -152,11 +152,11 @@ pub fn print_tx_info(context: &Context, tx: &TransactionView) {
         .unwrap()
         .iter_mut()
         .all(|f| {
-            add_contract_name(f, &mut bins);
+            add_contract_name(f, &bins);
             true
         });
 
-    println!("tx info: \n{}", d.to_string());
+    println!("tx info: \n{}", d);
 }
 
 // This helper method runs Context::verify_tx, but in case error happens,

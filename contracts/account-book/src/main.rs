@@ -99,11 +99,9 @@ fn load_verified_cell_data(is_selling: bool) -> Result<(AccountBookCellData, Has
             );
             return Err(Error::AccountBookModified);
         }
-    } else {
-        if old_member_count != new_member_count {
-            log::error!("Withdrawal does not allow update member_count");
-            return Err(Error::AccountBookModified);
-        }
+    } else if old_member_count != new_member_count {
+        log::error!("Withdrawal does not allow update member_count");
+        return Err(Error::AccountBookModified);
     }
 
     Ok((new_data, old_data.smt_root_hash().into()))
@@ -167,8 +165,14 @@ fn check_script_code_hash(data: &AccountBookData) -> Result<bool, Error> {
 }
 
 fn check_account_book() -> Result<Hash, Error> {
-    let hash = load_cell_type_hash(0, Source::GroupInput)?.ok_or_else(|| Error::CheckScript)?;
-    load_cell_type_hash(0, Source::GroupOutput)?.ok_or_else(|| Error::CheckScript)?;
+    let hash = load_cell_type_hash(0, Source::GroupInput)?.ok_or_else(|| {
+        log::error!("Load GroupInput type script is none");
+        Error::CheckScript
+    })?;
+    load_cell_type_hash(0, Source::GroupOutput)?.ok_or_else(|| {
+        log::error!("Load GroupOutput type script is none");
+        Error::CheckScript
+    })?;
 
     // There is only one Input and Output
     let ret = load_cell_type_hash(1, Source::GroupInput);

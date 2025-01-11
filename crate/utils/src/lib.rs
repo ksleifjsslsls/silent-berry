@@ -37,14 +37,14 @@ impl From<sparse_merkle_tree::H256> for Hash {
     }
 }
 #[cfg(feature = "smt")]
-impl Into<sparse_merkle_tree::H256> for Hash {
-    fn into(self) -> sparse_merkle_tree::H256 {
-        self.0.into()
+impl From<Hash> for sparse_merkle_tree::H256 {
+    fn from(value: Hash) -> Self {
+        value.0.into()
     }
 }
-impl Into<types::blockchain::Byte32> for Hash {
-    fn into(self) -> types::blockchain::Byte32 {
-        self.0.pack()
+impl From<Hash> for types::blockchain::Byte32 {
+    fn from(value: Hash) -> Self {
+        value.0.pack()
     }
 }
 
@@ -98,7 +98,7 @@ impl PartialEq<Option<[u8; 32]>> for Hash {
 }
 impl PartialEq<Byte32> for Hash {
     fn eq(&self, other: &Byte32) -> bool {
-        &self.0 == other.raw_data().to_vec().as_slice()
+        self.0 == other.raw_data().to_vec().as_slice()
     }
 }
 
@@ -162,16 +162,18 @@ impl UDTInfo {
     pub fn check_udt(&self) -> Result<(), SilentBerryError> {
         let mut i = 0u128;
         for u in &self.inputs {
-            i = i
-                .checked_add(u.0)
-                .ok_or_else(|| SilentBerryError::CheckXUDT)?;
+            i = i.checked_add(u.0).ok_or_else(|| {
+                log::error!("CheckUDT Failed, udt overflow");
+                SilentBerryError::CheckXUDT
+            })?;
         }
 
         let mut o = 0u128;
         for u in &self.inputs {
-            o = o
-                .checked_add(u.0)
-                .ok_or_else(|| SilentBerryError::CheckXUDT)?;
+            o = o.checked_add(u.0).ok_or_else(|| {
+                log::error!("CheckUDT Failed, udt overflow");
+                SilentBerryError::CheckXUDT
+            })?;
         }
 
         if i != o {

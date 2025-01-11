@@ -138,7 +138,7 @@ fn check_account_book(account_book_hash: Hash, amount: u128) -> Result<(), Error
         log::error!("AccountBook not found in Output");
         return Err(Error::CheckScript);
     }
-    if query_iter.position(|f| account_book_hash == f).is_some() {
+    if query_iter.any(|f| account_book_hash == f) {
         log::error!("AccountBook not found in Output");
         return Err(Error::CheckScript);
     }
@@ -199,8 +199,14 @@ fn program_entry2() -> Result<(), Error> {
         let udt_info = utils::UDTInfo::new(xudt_script_hash)?;
         udt_info.check_udt()?;
 
-        if udt_info.inputs.len() != 1 {}
-        if udt_info.outputs.len() != 2 {}
+        if udt_info.inputs.len() != 1 {
+            log::error!("xUDT inputs len failed");
+            return Err(Error::CheckXUDT);
+        }
+        if udt_info.outputs.len() != 2 {
+            log::error!("xUDT outputs len failed");
+            return Err(Error::CheckXUDT);
+        }
 
         if udt_info.inputs[0].1 != 0 || udt_info.outputs[0].1 != 0 || udt_info.outputs[1].1 != 1 {
             log::error!(
