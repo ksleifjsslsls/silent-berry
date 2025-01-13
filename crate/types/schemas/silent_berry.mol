@@ -35,6 +35,11 @@ table AccountBookData {
     cluster_id: Byte32,
 
     proof: Bytes,
+
+    total_a: Uint128,
+    total_b: Uint128,
+    total_c: Uint128,
+    total_d: Uint128,
 }
 
 # Cell Data

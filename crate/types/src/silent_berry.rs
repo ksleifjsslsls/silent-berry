@@ -1821,6 +1821,10 @@ impl ::core::fmt::Display for AccountBookData {
         )?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "proof", self.proof())?;
+        write!(f, ", {}: {}", "total_a", self.total_a())?;
+        write!(f, ", {}: {}", "total_b", self.total_b())?;
+        write!(f, ", {}: {}", "total_c", self.total_c())?;
+        write!(f, ", {}: {}", "total_d", self.total_d())?;
         let extra_count = self.count_extra_fields();
         if extra_count != 0 {
             write!(f, ", .. ({} fields)", extra_count)?;
@@ -1835,17 +1839,20 @@ impl ::core::default::Default for AccountBookData {
     }
 }
 impl AccountBookData {
-    const DEFAULT_VALUE: [u8; 228] = [
-        228, 0, 0, 0, 32, 0, 0, 0, 64, 0, 0, 0, 96, 0, 0, 0, 128, 0, 0, 0, 160, 0, 0, 0, 192, 0, 0,
-        0, 224, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    const DEFAULT_VALUE: [u8; 308] = [
+        52, 1, 0, 0, 48, 0, 0, 0, 80, 0, 0, 0, 112, 0, 0, 0, 144, 0, 0, 0, 176, 0, 0, 0, 208, 0, 0,
+        0, 240, 0, 0, 0, 244, 0, 0, 0, 4, 1, 0, 0, 20, 1, 0, 0, 36, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    pub const FIELD_COUNT: usize = 7;
+    pub const FIELD_COUNT: usize = 11;
     pub fn total_size(&self) -> usize {
         molecule::unpack_number(self.as_slice()) as usize
     }
@@ -1901,11 +1908,35 @@ impl AccountBookData {
     pub fn proof(&self) -> Bytes {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[28..]) as usize;
+        let end = molecule::unpack_number(&slice[32..]) as usize;
+        Bytes::new_unchecked(self.0.slice(start..end))
+    }
+    pub fn total_a(&self) -> Uint128 {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[32..]) as usize;
+        let end = molecule::unpack_number(&slice[36..]) as usize;
+        Uint128::new_unchecked(self.0.slice(start..end))
+    }
+    pub fn total_b(&self) -> Uint128 {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[36..]) as usize;
+        let end = molecule::unpack_number(&slice[40..]) as usize;
+        Uint128::new_unchecked(self.0.slice(start..end))
+    }
+    pub fn total_c(&self) -> Uint128 {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[40..]) as usize;
+        let end = molecule::unpack_number(&slice[44..]) as usize;
+        Uint128::new_unchecked(self.0.slice(start..end))
+    }
+    pub fn total_d(&self) -> Uint128 {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[44..]) as usize;
         if self.has_extra_fields() {
-            let end = molecule::unpack_number(&slice[32..]) as usize;
-            Bytes::new_unchecked(self.0.slice(start..end))
+            let end = molecule::unpack_number(&slice[48..]) as usize;
+            Uint128::new_unchecked(self.0.slice(start..end))
         } else {
-            Bytes::new_unchecked(self.0.slice(start..))
+            Uint128::new_unchecked(self.0.slice(start..))
         }
     }
     pub fn as_reader<'r>(&'r self) -> AccountBookDataReader<'r> {
@@ -1942,6 +1973,10 @@ impl molecule::prelude::Entity for AccountBookData {
             .input_type_proxy_lock_code_hash(self.input_type_proxy_lock_code_hash())
             .cluster_id(self.cluster_id())
             .proof(self.proof())
+            .total_a(self.total_a())
+            .total_b(self.total_b())
+            .total_c(self.total_c())
+            .total_d(self.total_d())
     }
 }
 #[derive(Clone, Copy)]
@@ -1990,6 +2025,10 @@ impl<'r> ::core::fmt::Display for AccountBookDataReader<'r> {
         )?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "proof", self.proof())?;
+        write!(f, ", {}: {}", "total_a", self.total_a())?;
+        write!(f, ", {}: {}", "total_b", self.total_b())?;
+        write!(f, ", {}: {}", "total_c", self.total_c())?;
+        write!(f, ", {}: {}", "total_d", self.total_d())?;
         let extra_count = self.count_extra_fields();
         if extra_count != 0 {
             write!(f, ", .. ({} fields)", extra_count)?;
@@ -1998,7 +2037,7 @@ impl<'r> ::core::fmt::Display for AccountBookDataReader<'r> {
     }
 }
 impl<'r> AccountBookDataReader<'r> {
-    pub const FIELD_COUNT: usize = 7;
+    pub const FIELD_COUNT: usize = 11;
     pub fn total_size(&self) -> usize {
         molecule::unpack_number(self.as_slice()) as usize
     }
@@ -2054,11 +2093,35 @@ impl<'r> AccountBookDataReader<'r> {
     pub fn proof(&self) -> BytesReader<'r> {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[28..]) as usize;
+        let end = molecule::unpack_number(&slice[32..]) as usize;
+        BytesReader::new_unchecked(&self.as_slice()[start..end])
+    }
+    pub fn total_a(&self) -> Uint128Reader<'r> {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[32..]) as usize;
+        let end = molecule::unpack_number(&slice[36..]) as usize;
+        Uint128Reader::new_unchecked(&self.as_slice()[start..end])
+    }
+    pub fn total_b(&self) -> Uint128Reader<'r> {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[36..]) as usize;
+        let end = molecule::unpack_number(&slice[40..]) as usize;
+        Uint128Reader::new_unchecked(&self.as_slice()[start..end])
+    }
+    pub fn total_c(&self) -> Uint128Reader<'r> {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[40..]) as usize;
+        let end = molecule::unpack_number(&slice[44..]) as usize;
+        Uint128Reader::new_unchecked(&self.as_slice()[start..end])
+    }
+    pub fn total_d(&self) -> Uint128Reader<'r> {
+        let slice = self.as_slice();
+        let start = molecule::unpack_number(&slice[44..]) as usize;
         if self.has_extra_fields() {
-            let end = molecule::unpack_number(&slice[32..]) as usize;
-            BytesReader::new_unchecked(&self.as_slice()[start..end])
+            let end = molecule::unpack_number(&slice[48..]) as usize;
+            Uint128Reader::new_unchecked(&self.as_slice()[start..end])
         } else {
-            BytesReader::new_unchecked(&self.as_slice()[start..])
+            Uint128Reader::new_unchecked(&self.as_slice()[start..])
         }
     }
 }
@@ -2115,6 +2178,10 @@ impl<'r> molecule::prelude::Reader<'r> for AccountBookDataReader<'r> {
         Byte32Reader::verify(&slice[offsets[4]..offsets[5]], compatible)?;
         Byte32Reader::verify(&slice[offsets[5]..offsets[6]], compatible)?;
         BytesReader::verify(&slice[offsets[6]..offsets[7]], compatible)?;
+        Uint128Reader::verify(&slice[offsets[7]..offsets[8]], compatible)?;
+        Uint128Reader::verify(&slice[offsets[8]..offsets[9]], compatible)?;
+        Uint128Reader::verify(&slice[offsets[9]..offsets[10]], compatible)?;
+        Uint128Reader::verify(&slice[offsets[10]..offsets[11]], compatible)?;
         Ok(())
     }
 }
@@ -2127,9 +2194,13 @@ pub struct AccountBookDataBuilder {
     pub(crate) input_type_proxy_lock_code_hash: Byte32,
     pub(crate) cluster_id: Byte32,
     pub(crate) proof: Bytes,
+    pub(crate) total_a: Uint128,
+    pub(crate) total_b: Uint128,
+    pub(crate) total_c: Uint128,
+    pub(crate) total_d: Uint128,
 }
 impl AccountBookDataBuilder {
-    pub const FIELD_COUNT: usize = 7;
+    pub const FIELD_COUNT: usize = 11;
     pub fn dob_selling_code_hash(mut self, v: Byte32) -> Self {
         self.dob_selling_code_hash = v;
         self
@@ -2158,6 +2229,22 @@ impl AccountBookDataBuilder {
         self.proof = v;
         self
     }
+    pub fn total_a(mut self, v: Uint128) -> Self {
+        self.total_a = v;
+        self
+    }
+    pub fn total_b(mut self, v: Uint128) -> Self {
+        self.total_b = v;
+        self
+    }
+    pub fn total_c(mut self, v: Uint128) -> Self {
+        self.total_c = v;
+        self
+    }
+    pub fn total_d(mut self, v: Uint128) -> Self {
+        self.total_d = v;
+        self
+    }
 }
 impl molecule::prelude::Builder for AccountBookDataBuilder {
     type Entity = AccountBookData;
@@ -2171,6 +2258,10 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
             + self.input_type_proxy_lock_code_hash.as_slice().len()
             + self.cluster_id.as_slice().len()
             + self.proof.as_slice().len()
+            + self.total_a.as_slice().len()
+            + self.total_b.as_slice().len()
+            + self.total_c.as_slice().len()
+            + self.total_d.as_slice().len()
     }
     fn write<W: molecule::io::Write>(&self, writer: &mut W) -> molecule::io::Result<()> {
         let mut total_size = molecule::NUMBER_SIZE * (Self::FIELD_COUNT + 1);
@@ -2189,6 +2280,14 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
         total_size += self.cluster_id.as_slice().len();
         offsets.push(total_size);
         total_size += self.proof.as_slice().len();
+        offsets.push(total_size);
+        total_size += self.total_a.as_slice().len();
+        offsets.push(total_size);
+        total_size += self.total_b.as_slice().len();
+        offsets.push(total_size);
+        total_size += self.total_c.as_slice().len();
+        offsets.push(total_size);
+        total_size += self.total_d.as_slice().len();
         writer.write_all(&molecule::pack_number(total_size as molecule::Number))?;
         for offset in offsets.into_iter() {
             writer.write_all(&molecule::pack_number(offset as molecule::Number))?;
@@ -2200,6 +2299,10 @@ impl molecule::prelude::Builder for AccountBookDataBuilder {
         writer.write_all(self.input_type_proxy_lock_code_hash.as_slice())?;
         writer.write_all(self.cluster_id.as_slice())?;
         writer.write_all(self.proof.as_slice())?;
+        writer.write_all(self.total_a.as_slice())?;
+        writer.write_all(self.total_b.as_slice())?;
+        writer.write_all(self.total_c.as_slice())?;
+        writer.write_all(self.total_d.as_slice())?;
         Ok(())
     }
     fn build(&self) -> Self::Entity {
