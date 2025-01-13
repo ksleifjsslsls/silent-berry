@@ -9,9 +9,7 @@ ckb_std::entry!(program_entry);
 #[cfg(not(any(feature = "native-simulator", test)))]
 ckb_std::default_alloc!();
 
-use core::panic;
-
-use alloc::vec;
+use alloc::string::String;
 use ckb_std::{
     ckb_constants::Source,
     ckb_types::prelude::{Builder, Entity, Pack, Reader, Unpack},
@@ -22,10 +20,11 @@ use ckb_std::{
     },
     log,
 };
+use core::panic;
 use spore_types::spore::{SporeData, SporeDataReader};
 use types::AccountBookData;
 use types::{error::SilentBerryError as Error, AccountBookCellData, AccountBookCellDataReader};
-use utils::{Hash, UDTInfo};
+use utils::{account_book_proof::SmtKey, Hash, UDTInfo};
 
 fn load_verified_data() -> Result<AccountBookData, Error> {
     let args = load_script()?.args().raw_data();
@@ -46,7 +45,15 @@ fn load_verified_data() -> Result<AccountBookData, Error> {
     types::AccountBookDataReader::verify(witness.to_vec().as_slice(), false)?;
     let data = AccountBookData::new_unchecked(witness);
 
-    let data2 = data.clone().as_builder().proof(Default::default()).build();
+    let data2 = data
+        .clone()
+        .as_builder()
+        .proof(Default::default())
+        .total_a(0.pack())
+        .total_b(0.pack())
+        .total_c(0.pack())
+        .total_d(0.pack())
+        .build();
     let hash = Hash::ckb_hash(data2.as_slice());
     let intent_data_hash: Hash = args.try_into()?;
 
@@ -130,6 +137,27 @@ fn get_spore(source: Source) -> Result<(SporeData, Hash), Error> {
     }
 }
 
+fn get_spore_level(data: &SporeData) -> Result<u8, Error> {
+    let content = String::from_utf8(data.content().raw_data().to_vec()).map_err(|e| {
+        log::error!("Parse Spore Content to string Failed, error: {:?}", e);
+        Error::Spore
+    })?;
+
+    let c = content
+        .chars()
+        .rev()
+        .find(|c| c.is_ascii_hexdigit())
+        .ok_or_else(|| {
+            log::error!("Spore Content format error, unable to find level");
+            Error::Spore
+        })?;
+
+    Ok(c.to_digit(16).ok_or_else(|| {
+        log::error!("Spore Content format error, unable to find level");
+        Error::Spore
+    })? as u8)
+}
+
 fn check_script_code_hash(data: &AccountBookData) -> Result<bool, Error> {
     let dob_selling_code_hash = data.dob_selling_code_hash();
     if QueryIter::new(load_cell_lock, Source::Input).any(|f| f.code_hash() == dob_selling_code_hash)
@@ -189,11 +217,20 @@ fn check_account_book() -> Result<Hash, Error> {
     Ok(hash.into())
 }
 
+fn get_total_by_data(data: &AccountBookData) -> (u128, u128, u128, u128) {
+    (
+        data.total_a().unpack(),
+        data.total_b().unpack(),
+        data.total_c().unpack(),
+        data.total_d().unpack(),
+    )
+}
+
 fn check_input_type_proxy_lock(
-    hash: &Hash,
+    data: &AccountBookData,
     udt_info: &UDTInfo,
     amount: u128,
-) -> Result<(u128, u128), Error> {
+) -> Result<(u128, u128, u128), Error> {
     let self_script_hash: Hash = load_cell_type_hash(0, Source::GroupInput)?
         .ok_or_else(|| {
             log::error!("Unknow Error: load cell type hash (Group Input)");
@@ -202,9 +239,10 @@ fn check_input_type_proxy_lock(
         .into();
 
     let mut input_amount = None;
+    let hash: Hash = data.input_type_proxy_lock_code_hash().into();
     for (amount, index) in &udt_info.inputs {
         let script = load_cell_lock(*index, Source::Input)?;
-        if *hash != script.code_hash() {
+        if hash != script.code_hash() {
             continue;
         }
         let account_book_script_hash: Hash = script.args().raw_data().try_into()?;
@@ -225,7 +263,7 @@ fn check_input_type_proxy_lock(
     let mut output_amount: Option<u128> = None;
     for (amount, index) in &udt_info.outputs {
         let script = load_cell_lock(*index, Source::Output)?;
-        if *hash != script.code_hash() {
+        if hash != script.code_hash() {
             continue;
         }
         let account_book_script_hash: Hash = script.args().raw_data().try_into()?;
@@ -253,7 +291,21 @@ fn check_input_type_proxy_lock(
         return Err(Error::CheckXUDT);
     }
 
-    Ok((input_amount, output_amount))
+    let total = get_total_by_data(data);
+
+    if input_amount != total.0 + total.1 + total.2 + total.3 {
+        log::error!(
+            "Witness total failed, input_amount: {}, a:{}, b:{}, c:{}, d:{}",
+            input_amount,
+            total.0,
+            total.1,
+            total.2,
+            total.3
+        );
+        return Err(Error::CheckXUDT);
+    }
+
+    Ok((input_amount, output_amount, amount))
 }
 
 fn is_creation() -> Result<bool, Error> {
@@ -289,59 +341,34 @@ fn selling(
     let udt_info = utils::UDTInfo::new(data.xudt_script_hash().into())?;
     udt_info.check_udt()?;
 
-    let (input_total, output_total) = check_input_type_proxy_lock(
-        &data.input_type_proxy_lock_code_hash().into(),
-        &udt_info,
-        cell_data.asset_amount().unpack(),
-    )?;
+    let (_, _, amount) =
+        check_input_type_proxy_lock(&data, &udt_info, cell_data.asset_amount().unpack())?;
 
-    // SMT
-    use utils::smt::{Blake2bHasher, CompiledMerkleProof, SmtKey, SmtValue, Value};
-
-    let proof = CompiledMerkleProof(data.proof().unpack());
-    if !proof
-        .verify::<Blake2bHasher>(
-            &old_smt_hash.into(),
-            vec![
-                (
-                    SmtKey::Total.get_key(),
-                    SmtValue::new(input_total).to_h256(),
-                ),
-                (
-                    SmtKey::Member(spore_id.clone()).get_key(),
-                    Default::default(),
-                ),
-            ],
-        )
-        .map_err(|e| {
-            log::error!("Verify Inputs Smt Error: {:?}", e);
-            Error::Smt
-        })?
-    {
-        log::error!("Verify Inputs SMT failed");
+    let mut total = get_total_by_data(&data);
+    let proof = utils::account_book_proof::AccountBookProof::new(data.proof().unpack());
+    if !proof.verify(
+        old_smt_hash,
+        total,
+        (SmtKey::Member(spore_id.clone()), None),
+    )? {
+        log::error!("Verify Input SMT failed");
         return Err(Error::Smt);
     }
 
+    let level = get_spore_level(&spore_data)?;
+    match level {
+        1 => total.0 += amount,
+        2 => total.1 += amount,
+        3 => total.2 += amount,
+        4 => total.3 += amount,
+        _ => {
+            log::error!("Spore level failed, {} is not 1,2,3,4", level);
+            return Err(Error::Spore);
+        }
+    };
+
     let new_smt_hash: Hash = cell_data.smt_root_hash().into();
-    if !proof
-        .verify::<Blake2bHasher>(
-            &new_smt_hash.into(),
-            vec![
-                (
-                    SmtKey::Total.get_key(),
-                    SmtValue::new(output_total).to_h256(),
-                ),
-                (
-                    SmtKey::Member(spore_id).get_key(),
-                    SmtValue::new(0).to_h256(),
-                ),
-            ],
-        )
-        .map_err(|e| {
-            log::error!("Verify Output Smt Error: {:?}", e);
-            Error::Smt
-        })?
-    {
+    if !proof.verify(new_smt_hash, total, (SmtKey::Member(spore_id), Some(0)))? {
         log::error!("Verify Output SMT failed");
         return Err(Error::Smt);
     }

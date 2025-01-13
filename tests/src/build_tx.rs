@@ -1,3 +1,4 @@
+use account_book::AccountBook;
 use ckb_testtool::{
     ckb_types::{
         core::{ScriptHashType, TransactionView},
@@ -7,7 +8,6 @@ use ckb_testtool::{
     context::Context,
 };
 use types::{AccountBookCellData, AccountBookData, DobSellingData};
-use utils::Hash;
 
 use crate::*;
 
@@ -158,6 +158,10 @@ pub fn build_account_book_script(
     let args = ckb_hash(
         data.as_builder()
             .proof(Default::default())
+            .total_a(0.pack())
+            .total_b(0.pack())
+            .total_c(0.pack())
+            .total_d(0.pack())
             .build()
             .as_slice(),
     );
@@ -302,9 +306,29 @@ pub fn get_account_script_hash(data: types::AccountBookData) -> [u8; 32] {
 pub fn update_accountbook(
     context: &mut Context,
     tx: TransactionView,
-    smt_hash: (Hash, Hash),
-    proof: Vec<u8>,
+    asset_amount: u128,
+    total: (u128, u128, u128, u128),
 ) -> TransactionView {
+    use utils::{
+        account_book_proof::{SmtKey, SmtValue},
+        Hash,
+    };
+
+    // Update SMT
+    let mut smt = AccountBook::new_test();
+    smt.update_total(total);
+    let old_smt_hash = smt.root_hash();
+
+    let sport_id: Hash = get_spore_id(&tx).into();
+
+    let mut total2 = total;
+    total2.1 += asset_amount;
+    smt.update_total(total2);
+    smt.update(SmtKey::Member(sport_id.clone()), SmtValue::new(0));
+    let new_smt_hash = smt.root_hash();
+    let smt_proof = smt.proof(SmtKey::Member(sport_id));
+
+    // Update tx
     let input_pos = tx
         .inputs()
         .into_iter()
@@ -326,7 +350,7 @@ pub fn update_accountbook(
 
     let abcd = AccountBookCellData::new_unchecked(cell_data.clone())
         .as_builder()
-        .smt_root_hash(smt_hash.0.into())
+        .smt_root_hash(old_smt_hash.into())
         .build();
     *cell_data = abcd.as_slice().to_vec().into();
 
@@ -334,7 +358,7 @@ pub fn update_accountbook(
     let cell_data =
         AccountBookCellData::new_unchecked(outputs_data.get(input_pos).unwrap().clone().unpack())
             .as_builder()
-            .smt_root_hash(smt_hash.1.into())
+            .smt_root_hash(new_smt_hash.into())
             .build();
     *outputs_data.get_mut(input_pos).unwrap() = cell_data.as_slice().to_vec().pack();
     let tx = tx
@@ -346,7 +370,11 @@ pub fn update_accountbook(
     let witness = WitnessArgs::new_unchecked(witnesses.get(input_pos).unwrap().unpack());
     let abd = AccountBookData::new_unchecked(witness.output_type().to_opt().unwrap().unpack())
         .as_builder()
-        .proof(proof.pack())
+        .proof(smt_proof.pack())
+        .total_a(total.0.pack())
+        .total_b(total.1.pack())
+        .total_c(total.2.pack())
+        .total_d(total.3.pack())
         .build();
     let witness = witness
         .as_builder()

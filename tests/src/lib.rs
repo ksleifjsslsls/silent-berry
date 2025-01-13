@@ -8,6 +8,7 @@ use ckb_testtool::{
     context::Context,
 };
 
+pub mod account_book;
 pub mod build_tx;
 pub mod spore;
 
@@ -193,28 +194,4 @@ pub fn new_context() -> Context {
 
 pub fn ckb_hash(data: &[u8]) -> [u8; 32] {
     ckb_testtool::ckb_hash::blake2b_256(data)
-}
-
-pub fn new_smt_tree() -> utils::smt::Smt {
-    use utils::smt::*;
-    use utils::Hash;
-
-    let mut smt = Smt::default();
-
-    let mut c: u8 = 0;
-    fn new_hash(count: &mut u8) -> Hash {
-        *count += 1;
-        [*count; 32].into()
-    }
-
-    smt.update(SmtKey::Auther, SmtValue::new(2001));
-    smt.update(SmtKey::Platform, SmtValue::new(0));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(123));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4324));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4444));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(555));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(0));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(300000));
-
-    smt
 }

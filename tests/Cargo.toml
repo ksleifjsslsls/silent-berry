@@ -13,5 +13,5 @@ lazy_static = "1.5.0"
 hex = "0.4.3"
 
 types = { path = "../crate/types" }
-utils = { path = "../crate/utils", features = [ "smt" ] }
+utils = { path = "../crate/utils", features = [ "smt", "std" ] }
 spore-types = { path = "../crate/spore-types" }

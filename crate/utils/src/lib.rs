@@ -3,7 +3,7 @@
 extern crate alloc;
 
 #[cfg(feature = "smt")]
-pub mod smt;
+pub mod account_book_proof;
 
 use alloc::vec::Vec;
 use ckb_std::{
@@ -45,6 +45,11 @@ impl From<Hash> for sparse_merkle_tree::H256 {
 impl From<Hash> for types::blockchain::Byte32 {
     fn from(value: Hash) -> Self {
         value.0.pack()
+    }
+}
+impl From<Hash> for [u8; 32] {
+    fn from(value: Hash) -> Self {
+        value.0
     }
 }
 

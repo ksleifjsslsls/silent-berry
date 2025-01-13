@@ -6,7 +6,6 @@ use ckb_testtool::ckb_types::{
 };
 use spore_types::spore::SporeData;
 use types::{AccountBookCellData, AccountBookData, BuyIntentData, DobSellingData};
-use utils::smt::{SmtKey, SmtValue, Value};
 
 const DATA_ASSET_AMOUNT: u128 = 200;
 const DATA_MIN_CAPACITY: u64 = 1000;
@@ -272,7 +271,7 @@ fn test_simple_selling() {
         tx,
         account_book_data.clone(),
         (ab_cell_data, ab_cell_data_new),
-        (10000, 10200),
+        (10000, 10000 + DATA_ASSET_AMOUNT),
     );
     let account_book_script_hash = get_account_script_hash(account_book_data);
 
@@ -345,19 +344,7 @@ fn test_simple_selling() {
     // Spore
     let tx = build_spore(&mut context, tx, cluster_deps, spore_data);
 
-    // Update SMT
-    let mut smt = new_smt_tree();
-    smt.update(SmtKey::Total, SmtValue::new(10000));
-    let old_smt_hash = smt.root_hash();
-
-    let sport_id: utils::Hash = get_spore_id(&tx).into();
-
-    smt.update(SmtKey::Total, SmtValue::new(10200));
-    smt.update(SmtKey::Member(sport_id.clone()), SmtValue::new(0));
-    let new_smt_hash = smt.root_hash();
-    let smt_proof = smt.proof(vec![SmtKey::Total, SmtKey::Member(sport_id)]);
-    let tx = update_accountbook(&mut context, tx, (old_smt_hash, new_smt_hash), smt_proof);
-
+    let tx = update_accountbook(&mut context, tx, DATA_ASSET_AMOUNT, (5000, 5000, 0, 0));
     let tx = context.complete_tx(tx);
     // print_tx_info(&context, &tx);
     verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
@@ -368,63 +355,3 @@ fn test_simple_withdrawal_intent() {}
 
 #[test]
 fn testsimple_withdrawal() {}
-
-#[test]
-fn test_smt() {
-    use utils::{
-        smt::{Blake2bHasher, CompiledMerkleProof, Smt, SmtKey, SmtValue},
-        Hash,
-    };
-    let mut smt = Smt::default();
-
-    let mut c: u8 = 0;
-    fn new_hash(count: &mut u8) -> Hash {
-        *count += 1;
-        [*count; 32].into()
-    }
-
-    smt.update(SmtKey::Total, SmtValue::new(80000));
-    smt.update(SmtKey::Auther, SmtValue::new(2001));
-    smt.update(SmtKey::Platform, SmtValue::new(0));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(123));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4324));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(4444));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(555));
-    smt.update(SmtKey::Member(new_hash(&mut c)), SmtValue::new(0));
-
-    let k = SmtKey::Member(new_hash(&mut c));
-
-    let ks = vec![SmtKey::Total, k.clone()];
-    let proof = smt.proof(ks);
-    let old_hash = smt.root_hash();
-
-    smt.update(SmtKey::Total, SmtValue::new(79800));
-    smt.update(k.clone(), SmtValue::new(200));
-    let new_hash = smt.root_hash();
-
-    let compiled_proof = CompiledMerkleProof(proof);
-
-    let ret = compiled_proof
-        .verify::<Blake2bHasher>(
-            &old_hash.clone().into(),
-            vec![
-                (SmtKey::Total.get_key(), SmtValue::new(80000).to_h256()),
-                (k.get_key(), Default::default()),
-            ],
-        )
-        .unwrap();
-    assert!(ret);
-    // println!("ret: {:?}", ret);
-
-    let ret = compiled_proof
-        .verify::<Blake2bHasher>(
-            &new_hash.clone().into(),
-            vec![
-                (SmtKey::Total.get_key(), SmtValue::new(79800).to_h256()),
-                (k.get_key(), SmtValue::new(200).to_h256()),
-            ],
-        )
-        .unwrap();
-    assert!(ret);
-    // println!("ret: {:?}", ret);
-}
