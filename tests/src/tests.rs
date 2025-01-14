@@ -379,7 +379,7 @@ fn test_simple_withdrawal_intent() {
         .cluster_id(get_cluster_id(&spore_data).pack())
         .build();
     let withdrawal_intent_script =
-        build_withdrawal_intent_script(&mut context, &withdrawal_intent_data);
+        build_withdrawal_intent_script(&mut context, &withdrawal_intent_data, [0u8; 32].into());
     // Inputs: CKB + Spore
     // Output: Withdrawal intent + Spore
     let tx = tx
@@ -461,6 +461,8 @@ fn test_simple_withdrawal_suc() {
             .build()
     };
     let tx = {
+        // TODO Build SMT Info
+
         let input_cell = {
             context.create_cell(
                 CellOutput::new_builder()
@@ -499,8 +501,15 @@ fn test_simple_withdrawal_suc() {
             .spore_id(spore_id.into())
             .cluster_id(cluster_id.into())
             .build();
-        let withdrawal_intent_script =
-            build_withdrawal_intent_script(&mut context, &withdrawal_intent_data);
+        let withdrawal_intent_script = build_withdrawal_intent_script(
+            &mut context,
+            &withdrawal_intent_data,
+            account_book_script
+                .as_ref()
+                .unwrap()
+                .calc_script_hash()
+                .into(),
+        );
 
         let input_cell = {
             context.create_cell(

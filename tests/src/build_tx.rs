@@ -430,6 +430,7 @@ pub fn build_transfer_spore(
 pub fn build_withdrawal_intent_script(
     context: &mut Context,
     data: &WithdrawalIntentData,
+    account_book_script_hash: Hash,
 ) -> Option<Script> {
     let out_point = context.deploy_cell_by_name(WITHDRAWAL_INTENT_NAME);
     let hash = ckb_hash(data.as_slice());
@@ -438,7 +439,10 @@ pub fn build_withdrawal_intent_script(
             .build_script_with_hash_type(
                 &out_point,
                 ScriptHashType::Data2,
-                [[0u8; 32], hash].concat().to_vec().into(),
+                [account_book_script_hash.into(), hash]
+                    .concat()
+                    .to_vec()
+                    .into(),
             )
             .expect("WITHDRAWAL_INTENT_NAME"),
     )

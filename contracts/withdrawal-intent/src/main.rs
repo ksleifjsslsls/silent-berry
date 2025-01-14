@@ -14,14 +14,15 @@ use ckb_std::{
     ckb_types::prelude::{Entity, Reader},
     error::SysError,
     high_level::{
-        load_cell_capacity, load_cell_data, load_cell_type, load_script, load_witness_args,
+        load_cell_capacity, load_cell_data, load_cell_type, load_cell_type_hash, load_script,
+        load_witness_args, QueryIter,
     },
     log,
 };
 use spore_types::spore::{SporeData, SporeDataReader};
 use types::error::SilentBerryError as Error;
 use types::WithdrawalIntentData;
-use utils::Hash;
+use utils::{Hash, UDTInfo};
 
 fn is_input() -> Result<bool, Error> {
     let input = match load_cell_capacity(0, Source::GroupInput) {
@@ -139,12 +140,30 @@ fn check_spore(data: &WithdrawalIntentData) -> Result<(), Error> {
     Ok(())
 }
 
+fn check_account_book(hash: Hash) -> Result<(), Error> {
+    if !QueryIter::new(load_cell_type_hash, Source::Input).any(|script_hash| hash == script_hash) {
+        log::error!("Account Book not found in Input");
+        return Err(Error::TxStructure);
+    }
+    if !QueryIter::new(load_cell_type_hash, Source::Output).any(|script_hash| hash == script_hash) {
+        log::error!("Account Book not found in Output");
+        return Err(Error::TxStructure);
+    }
+
+    Ok(())
+}
+
 fn program_entry2() -> Result<(), Error> {
     let is_input = is_input()?;
-    let (data, _accountbook_hash) = load_verified_data(is_input)?;
+    let (data, accountbook_hash) = load_verified_data(is_input)?;
 
     if is_input {
-        log::error!("-- input unsuppore --");
+        check_account_book(accountbook_hash)?;
+
+        let xudt_script_hash: Hash = data.xudt_script_hash().into();
+        let udt_info = UDTInfo::new(xudt_script_hash)?;
+        udt_info.check_udt()?;
+
         Ok(())
     } else {
         // check spore
