@@ -7,7 +7,9 @@ use ckb_testtool::{
     },
     context::Context,
 };
-use types::{AccountBookCellData, AccountBookData, DobSellingData};
+use spore_types::spore::SporeData;
+use types::{AccountBookCellData, AccountBookData, DobSellingData, WithdrawalIntentData};
+use utils::Hash;
 
 use crate::*;
 
@@ -105,14 +107,10 @@ pub fn build_xudt_cell(context: &mut Context, lock_script: Script) -> CellOutput
         .build()
 }
 
-fn build_input_proxy_script(context: &mut Context, type_script_hash: [u8; 32]) -> Script {
+pub fn build_input_proxy_script(context: &mut Context, type_script_hash: Hash) -> Script {
     let out_point = context.deploy_cell_by_name(INPUT_TYPE_PROXY_LOCK_NAME);
     context
-        .build_script_with_hash_type(
-            &out_point,
-            ScriptHashType::Data1,
-            type_script_hash.to_vec().into(),
-        )
+        .build_script_with_hash_type(&out_point, ScriptHashType::Data1, type_script_hash.into())
         .expect("build input-proxy-lock")
 }
 
@@ -128,7 +126,7 @@ pub fn build_dob_selling_script(
         .expect("build dob-selling script")
 }
 
-pub fn build_buy_intent_script(context: &mut Context, args: &[u8]) -> Script {
+fn build_buy_intent_script(context: &mut Context, args: &[u8]) -> Script {
     let out_point = context.deploy_cell_by_name(BUY_INTENT_NAME);
 
     context
@@ -189,7 +187,7 @@ pub fn build_account_book(
             .as_ref()
             .unwrap()
             .calc_script_hash()
-            .unpack(),
+            .into(),
     );
 
     let cell_output = CellOutput::new_builder()
@@ -240,7 +238,7 @@ pub fn build_cluster(context: &mut Context, cluster: (&str, &str)) -> ([u8; 32],
     (cluster_id, cluster_dep)
 }
 
-pub fn build_spore(
+pub fn build_mint_spore(
     context: &mut Context,
     tx: TransactionView,
     cluster_deps: CellDep,
@@ -383,4 +381,65 @@ pub fn update_accountbook(
     *witnesses.get_mut(input_pos).unwrap() = witness.as_bytes().pack();
 
     tx.as_advanced_builder().set_witnesses(witnesses).build()
+}
+
+pub fn build_transfer_spore(
+    context: &mut Context,
+    tx: TransactionView,
+    spore_data: &SporeData,
+) -> TransactionView {
+    let (spore_out_point, spore_script_dep) =
+        crate::spore::build_spore_contract_materials(context, "spore");
+    let normal_input = &crate::spore::build_normal_input(context);
+    let out_index = 20;
+
+    // build spore cell in Input
+    let old_spore_id = crate::spore::build_type_id(normal_input, out_index);
+
+    let old_spore_type = crate::spore::build_spore_type_script(
+        context,
+        &spore_out_point,
+        old_spore_id.to_vec().into(),
+    );
+    let spore_input =
+        crate::spore::build_spore_input(context, old_spore_type.clone(), spore_data.clone());
+
+    let new_spore_id = crate::spore::build_type_id(normal_input, out_index);
+
+    let new_spore_type: Option<Script> = crate::spore::build_spore_type_script(
+        context,
+        &spore_out_point,
+        new_spore_id.to_vec().into(),
+    );
+    let spore_output =
+        crate::spore::build_normal_output_cell_with_type(context, new_spore_type.clone());
+
+    // build spore transfer tx
+    let tx = tx
+        .as_advanced_builder()
+        .input(spore_input)
+        .output(spore_output)
+        .output_data(spore_data.as_slice().pack())
+        .cell_dep(spore_script_dep)
+        .build();
+
+    let action = crate::spore::co_build::build_transfer_spore_action(context, old_spore_id);
+    crate::spore::co_build::complete_co_build_message_with_actions(tx, &[(new_spore_type, action)])
+}
+
+pub fn build_withdrawal_intent_script(
+    context: &mut Context,
+    data: &WithdrawalIntentData,
+) -> Option<Script> {
+    let out_point = context.deploy_cell_by_name(WITHDRAWAL_INTENT_NAME);
+    let hash = ckb_hash(data.as_slice());
+    Some(
+        context
+            .build_script_with_hash_type(
+                &out_point,
+                ScriptHashType::Data2,
+                [[0u8; 32], hash].concat().to_vec().into(),
+            )
+            .expect("WITHDRAWAL_INTENT_NAME"),
+    )
 }

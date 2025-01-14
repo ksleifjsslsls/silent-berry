@@ -52,6 +52,17 @@ impl From<Hash> for [u8; 32] {
         value.0
     }
 }
+impl From<Hash> for types::blockchain::Bytes {
+    fn from(value: Hash) -> Self {
+        use ckb_std::ckb_types::prelude::Pack;
+        value.0.to_vec().pack()
+    }
+}
+impl From<Hash> for ckb_std::ckb_types::bytes::Bytes {
+    fn from(value: Hash) -> Self {
+        value.0.to_vec().into()
+    }
+}
 
 impl TryFrom<&[u8]> for Hash {
     type Error = SilentBerryError;
@@ -79,6 +90,33 @@ impl TryFrom<types::blockchain::Bytes> for Hash {
     type Error = SilentBerryError;
     fn try_from(value: types::blockchain::Bytes) -> Result<Self, Self::Error> {
         value.raw_data().to_vec().as_slice().try_into()
+    }
+}
+impl TryFrom<types::blockchain::BytesOpt> for Hash {
+    type Error = SilentBerryError;
+    fn try_from(value: types::blockchain::BytesOpt) -> Result<Self, Self::Error> {
+        value
+            .to_opt()
+            .ok_or_else(|| {
+                log::error!("BytesOpt to Hash failed, BytesOpt is None");
+                SilentBerryError::TypeConversion
+            })?
+            .try_into()
+    }
+}
+impl TryFrom<spore_types::spore::BytesOpt> for Hash {
+    type Error = SilentBerryError;
+    fn try_from(value: spore_types::spore::BytesOpt) -> Result<Self, Self::Error> {
+        value
+            .to_opt()
+            .ok_or_else(|| {
+                log::error!("BytesOpt to Hash failed, BytesOpt is None");
+                SilentBerryError::TypeConversion
+            })?
+            .raw_data()
+            .to_vec()
+            .as_slice()
+            .try_into()
     }
 }
 

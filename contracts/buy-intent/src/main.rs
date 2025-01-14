@@ -21,10 +21,9 @@ use ckb_std::{
     },
     log::{self},
 };
+use types::error::SilentBerryError as Error;
 use types::{AccountBookCellData, BuyIntentData};
 use utils::Hash;
-
-use types::error::SilentBerryError as Error;
 
 fn is_input() -> Result<bool, Error> {
     let input = match load_cell_capacity(0, Source::GroupInput) {

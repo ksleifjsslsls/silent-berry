@@ -13,6 +13,17 @@ table BuyIntentData {
 }
 
 # Witness
+table WithdrawalIntentData {
+    xudt_script_hash: Byte32,
+    spore_id: Byte32,
+    cluster_id: Byte32,
+
+    expire_since: Uint64,
+    owner_script_hash: Byte32,
+    change_location: Uint32,
+}
+
+# Witness
 table DobSellingData {
     account_book_script_hash: Byte32,
     spore_data_hash: Byte32,

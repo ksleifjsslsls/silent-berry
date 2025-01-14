@@ -9,6 +9,7 @@ use ckb_testtool::{
 };
 
 pub mod account_book;
+pub mod build_silentberry;
 pub mod build_tx;
 pub mod spore;
 

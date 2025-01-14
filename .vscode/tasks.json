@@ -15,7 +15,7 @@
         {
             "label": "RunTest",
             "type": "shell",
-            "command": "cargo test --package tests --lib -- tests::test_simple_selling --nocapture",
+            "command": "cargo test --package tests --lib -- tests::test_simple_withdrawal_suc --nocapture",
             "dependsOn": [
                 "Build"
             ],

@@ -1802,6 +1802,7 @@ dependencies = [
  "blake2b-ref",
  "ckb-std",
  "sparse-merkle-tree",
+ "spore-types",
  "types",
 ]
 
@@ -2015,6 +2016,9 @@ name = "withdrawal-intent"
 version = "0.1.0"
 dependencies = [
  "ckb-std",
+ "spore-types",
+ "types",
+ "utils",
 ]
 
 [[package]]

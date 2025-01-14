@@ -377,7 +377,8 @@ fn selling(
 }
 
 fn withdrawal(_data: AccountBookData) -> Result<(), Error> {
-    panic!("Unsuppore");
+    log::error!("Unsupport");
+    Ok(())
 }
 
 fn program_entry2() -> Result<(), Error> {

@@ -204,6 +204,7 @@ pub fn build_agent_materials(
 
 pub fn build_single_spore_mint_tx_with_extra_action(
     context: &mut Context,
+    tx: TransactionView,
     output_data: Vec<u8>,
     content_type: &str,
     input_data: Option<SporeData>,
@@ -231,7 +232,8 @@ pub fn build_single_spore_mint_tx_with_extra_action(
     };
     let spore_type = build_spore_type_script(context, &spore_out_point, type_id.to_vec().into());
     let spore_output = build_normal_output_cell_with_type(context, spore_type.clone());
-    let tx = TransactionBuilder::default()
+    let tx = tx
+        .as_advanced_builder()
         .input(input)
         .output(spore_output)
         .output_data(output_data.as_slice().pack())
@@ -241,23 +243,6 @@ pub fn build_single_spore_mint_tx_with_extra_action(
     let action = co_build::build_mint_spore_action(context, type_id, output_data.as_slice());
     actions.push((spore_type, action));
     co_build::complete_co_build_message_with_actions(tx, &actions)
-}
-
-pub fn build_single_spore_mint_tx(
-    context: &mut Context,
-    output_data: Vec<u8>,
-    content_type: &str,
-    input_data: Option<SporeData>,
-    cluster_id: Option<[u8; 32]>,
-) -> TransactionView {
-    build_single_spore_mint_tx_with_extra_action(
-        context,
-        output_data,
-        content_type,
-        input_data,
-        cluster_id,
-        vec![],
-    )
 }
 
 pub fn build_spore_mint_tx(

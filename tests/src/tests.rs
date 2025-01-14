@@ -5,7 +5,10 @@ use ckb_testtool::ckb_types::{
     prelude::{Builder, Entity, Pack, PackVec},
 };
 use spore_types::spore::SporeData;
-use types::{AccountBookCellData, AccountBookData, BuyIntentData, DobSellingData};
+use types::{
+    AccountBookCellData, AccountBookData, BuyIntentData, DobSellingData, WithdrawalIntentData,
+};
+use utils::Hash;
 
 const DATA_ASSET_AMOUNT: u128 = 200;
 const DATA_MIN_CAPACITY: u64 = 1000;
@@ -25,6 +28,15 @@ fn def_buy_intent_data(context: &mut Context, dob_data: &DobSellingData) -> BuyI
         .asset_amount(DATA_ASSET_AMOUNT.pack())
         .min_capacity(DATA_MIN_CAPACITY.pack())
         .change_script_hash([0u8; 32].pack())
+        .expire_since(1000u64.pack())
+        .owner_script_hash([0u8; 32].pack())
+        .build()
+}
+fn def_withdrawal_intent_data(context: &mut Context) -> WithdrawalIntentData {
+    WithdrawalIntentData::new_builder()
+        .xudt_script_hash(get_opt_script_hash(&build_xudt_script(context)).pack())
+        .spore_id([0u8; 32].pack())
+        .cluster_id([0u8; 32].pack())
         .expire_since(1000u64.pack())
         .owner_script_hash([0u8; 32].pack())
         .build()
@@ -342,7 +354,7 @@ fn test_simple_selling() {
         .build();
 
     // Spore
-    let tx = build_spore(&mut context, tx, cluster_deps, spore_data);
+    let tx = build_mint_spore(&mut context, tx, cluster_deps, spore_data);
 
     let tx = update_accountbook(&mut context, tx, DATA_ASSET_AMOUNT, (5000, 5000, 0, 0));
     let tx = context.complete_tx(tx);
@@ -351,7 +363,177 @@ fn test_simple_selling() {
 }
 
 #[test]
-fn test_simple_withdrawal_intent() {}
+fn test_simple_withdrawal_intent() {
+    // Add Spore
+    let mut context = new_context();
+    let tx = TransactionBuilder::default().build();
+    let def_lock_script = build_always_suc_script(&mut context, &[]);
+
+    let (spore_data, _cluster_dep) = def_spore(&mut context);
+    let tx = build_transfer_spore(&mut context, tx, &spore_data);
+    let tx = context.complete_tx(tx);
+
+    let withdrawal_intent_data = def_withdrawal_intent_data(&mut context)
+        .as_builder()
+        .spore_id(get_spore_id(&tx).pack())
+        .cluster_id(get_cluster_id(&spore_data).pack())
+        .build();
+    let withdrawal_intent_script =
+        build_withdrawal_intent_script(&mut context, &withdrawal_intent_data);
+    // Inputs: CKB + Spore
+    // Output: Withdrawal intent + Spore
+    let tx = tx
+        .as_advanced_builder()
+        .input(build_input(build_out_point1(
+            &mut context,
+            def_lock_script.clone(),
+        )))
+        .output(
+            CellOutput::new_builder()
+                .lock(def_lock_script)
+                .type_(withdrawal_intent_script.pack())
+                .capacity(1000.pack())
+                .build(),
+        )
+        .output_data(Default::default())
+        .witness(
+            WitnessArgs::new_builder()
+                .output_type(Some(withdrawal_intent_data.as_bytes()).pack())
+                .build()
+                .as_slice()
+                .pack(),
+        )
+        .build();
+
+    let tx = context.complete_tx(tx);
+    verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
+}
 
 #[test]
-fn testsimple_withdrawal() {}
+fn test_simple_withdrawal_suc() {
+    let mut context = new_context();
+    let tx = TransactionBuilder::default().build();
+    let def_lock_script = build_always_suc_script(&mut context, &[0x11; 32]);
+    let xudt_script = build_xudt_script(&mut context);
+
+    let spore_id: Hash = [0x1B; 32].into();
+    let cluster_id: Hash = [0x1A; 32].into();
+
+    // Account Book
+    let account_book_cell_data = def_account_book_cell_data(&mut context);
+    let account_book_data = def_account_book_data(&mut context)
+        .as_builder()
+        .cluster_id(cluster_id.clone().into())
+        .build();
+    let account_book_script = build_account_book_script(&mut context, account_book_data.clone());
+    let tx = {
+        let input_proxy_script = build_input_proxy_script(
+            &mut context,
+            account_book_script
+                .as_ref()
+                .unwrap()
+                .calc_script_hash()
+                .into(),
+        );
+
+        let input_cell = {
+            context.create_cell(
+                CellOutput::new_builder()
+                    .capacity(16.pack())
+                    .lock(input_proxy_script.clone())
+                    .type_(xudt_script.clone().pack())
+                    .build(),
+                10000u128.to_le_bytes().to_vec().into(),
+            )
+        };
+        let output_cell = {
+            CellOutput::new_builder()
+                .capacity(16.pack())
+                .lock(input_proxy_script.clone())
+                .type_(xudt_script.pack())
+                .build()
+        };
+        tx.as_advanced_builder()
+            .input(build_input(input_cell))
+            .output(output_cell)
+            .output_data((10000u128 - 200).to_le_bytes().pack())
+            .witness(Default::default())
+            .build()
+    };
+    let tx = {
+        let input_cell = {
+            context.create_cell(
+                CellOutput::new_builder()
+                    .capacity(1000.pack())
+                    .lock(def_lock_script.clone())
+                    .type_(account_book_script.clone().pack())
+                    .build(),
+                account_book_cell_data.as_bytes().into(),
+            )
+        };
+        let output_cell = {
+            CellOutput::new_builder()
+                .capacity(1000.pack())
+                .lock(def_lock_script.clone())
+                .type_(account_book_script.pack())
+                .build()
+        };
+        tx.as_advanced_builder()
+            .input(build_input(input_cell))
+            .output(output_cell)
+            .output_data(account_book_cell_data.as_slice().pack())
+            .witness(
+                WitnessArgs::new_builder()
+                    .output_type(Some(account_book_data.as_bytes()).pack())
+                    .build()
+                    .as_bytes()
+                    .pack(),
+            )
+            .build()
+    };
+
+    // Withdrawal Intent
+    let tx = {
+        let withdrawal_intent_data = def_withdrawal_intent_data(&mut context)
+            .as_builder()
+            .spore_id(spore_id.into())
+            .cluster_id(cluster_id.into())
+            .build();
+        let withdrawal_intent_script =
+            build_withdrawal_intent_script(&mut context, &withdrawal_intent_data);
+
+        let input_cell = {
+            context.create_cell(
+                CellOutput::new_builder()
+                    .capacity(16.pack())
+                    .lock(def_lock_script.clone())
+                    .type_(withdrawal_intent_script.pack())
+                    .build(),
+                Default::default(),
+            )
+        };
+        let output_cell = {
+            CellOutput::new_builder()
+                .capacity(16.pack())
+                .lock(def_lock_script.clone())
+                .type_(xudt_script.pack())
+                .build()
+        };
+
+        tx.as_advanced_builder()
+            .input(build_input(input_cell))
+            .output(output_cell)
+            .output_data(200u128.to_le_bytes().pack())
+            .witness(
+                WitnessArgs::new_builder()
+                    .input_type(Some(withdrawal_intent_data.as_bytes()).pack())
+                    .build()
+                    .as_bytes()
+                    .pack(),
+            )
+            .build()
+    };
+
+    let tx = context.complete_tx(tx);
+    verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
+}
