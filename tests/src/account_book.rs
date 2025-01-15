@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use utils::{
-    account_book_proof::{SMTTree, SmtKey, SmtValue, H256},
+    account_book_proof::{SMTTree, SmtKey, SmtValue, TotalAmounts, H256},
     Hash,
 };
 
@@ -71,11 +71,11 @@ impl AccountBook {
         smt
     }
 
-    pub fn update_total(&mut self, total: (u128, u128, u128, u128)) {
-        self.update(SmtKey::TotalA, SmtValue::new(total.0));
-        self.update(SmtKey::TotalB, SmtValue::new(total.1));
-        self.update(SmtKey::TotalC, SmtValue::new(total.2));
-        self.update(SmtKey::TotalD, SmtValue::new(total.3));
+    pub fn update_total(&mut self, total: TotalAmounts) {
+        self.update(SmtKey::TotalA, SmtValue::new(total.a));
+        self.update(SmtKey::TotalB, SmtValue::new(total.b));
+        self.update(SmtKey::TotalC, SmtValue::new(total.c));
+        self.update(SmtKey::TotalD, SmtValue::new(total.d));
     }
 
     pub fn get_item(&self, k: SmtKey) -> u128 {
@@ -84,13 +84,13 @@ impl AccountBook {
         self.bk_items.get(&k).unwrap().clone().amount
     }
 
-    pub fn get_total(&self) -> (u128, u128, u128, u128) {
-        (
-            self.get_item(SmtKey::TotalA),
-            self.get_item(SmtKey::TotalB),
-            self.get_item(SmtKey::TotalC),
-            self.get_item(SmtKey::TotalD),
-        )
+    pub fn get_total(&self) -> TotalAmounts {
+        TotalAmounts {
+            a: self.get_item(SmtKey::TotalA),
+            b: self.get_item(SmtKey::TotalB),
+            c: self.get_item(SmtKey::TotalC),
+            d: self.get_item(SmtKey::TotalD),
+        }
     }
 }
 
@@ -130,7 +130,7 @@ fn test_smt() {
     let cproof = utils::account_book_proof::AccountBookProof::new(proof);
 
     assert!(cproof
-        .verify(root_hash_1, total_1, (k.clone(), None))
+        .verify(root_hash_1, total_1.clone(), (k.clone(), None))
         .unwrap());
     assert!(cproof
         .verify(root_hash_2, total_1, (k.clone(), Some(200)))

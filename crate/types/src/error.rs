@@ -18,6 +18,7 @@ pub enum SilentBerryError {
     CheckScript,
     Spore,
     Smt,
+    AccountBookOverflow,
 
     CapacityError,
     ExpireSince,

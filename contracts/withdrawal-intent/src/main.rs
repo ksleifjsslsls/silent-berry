@@ -137,6 +137,12 @@ fn check_spore(data: &WithdrawalIntentData) -> Result<(), Error> {
         return Err(Error::Spore);
     }
 
+    let spore_level: ckb_std::ckb_types::packed::Byte = utils::get_spore_level(&spore_data)?.into();
+    if data.spore_level() != spore_level {
+        log::error!("Check spore level failed");
+        return Err(Error::Spore);
+    }
+
     Ok(())
 }
 
@@ -163,7 +169,6 @@ fn program_entry2() -> Result<(), Error> {
         let xudt_script_hash: Hash = data.xudt_script_hash().into();
         let udt_info = UDTInfo::new(xudt_script_hash)?;
         udt_info.check_udt()?;
-
         Ok(())
     } else {
         // check spore

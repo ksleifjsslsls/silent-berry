@@ -9,7 +9,7 @@ use ckb_testtool::{
 };
 use spore_types::spore::SporeData;
 use types::{AccountBookCellData, AccountBookData, DobSellingData, WithdrawalIntentData};
-use utils::Hash;
+use utils::{account_book_proof::TotalAmounts, Hash};
 
 use crate::*;
 
@@ -291,6 +291,27 @@ pub fn get_spore_id(tx: &TransactionView) -> [u8; 32] {
         .unwrap()
 }
 
+pub fn get_spore_level(tx: &TransactionView) -> u8 {
+    let spore_index = tx
+        .outputs()
+        .into_iter()
+        .position(|f| {
+            if let Some(t) = f.type_().to_opt() {
+                t.code_hash().as_slice() == *SporeCodeHash
+            } else {
+                false
+            }
+        })
+        .unwrap();
+
+    let _spore_data =
+        SporeData::new_unchecked(tx.outputs_data().get(spore_index).unwrap().as_bytes());
+
+    // let content = spore_data.content();
+
+    panic!("unsupport")
+}
+
 pub fn get_account_script_hash(data: types::AccountBookData) -> [u8; 32] {
     build_account_book_script(&mut new_context(), data)
         .as_ref()
@@ -305,7 +326,7 @@ pub fn update_accountbook(
     context: &mut Context,
     tx: TransactionView,
     asset_amount: u128,
-    total: (u128, u128, u128, u128),
+    total: TotalAmounts,
 ) -> TransactionView {
     use utils::{
         account_book_proof::{SmtKey, SmtValue},
@@ -314,13 +335,13 @@ pub fn update_accountbook(
 
     // Update SMT
     let mut smt = AccountBook::new_test();
-    smt.update_total(total);
+    smt.update_total(total.clone());
     let old_smt_hash = smt.root_hash();
 
     let sport_id: Hash = get_spore_id(&tx).into();
 
-    let mut total2 = total;
-    total2.1 += asset_amount;
+    let mut total2 = total.clone();
+    total2.b += asset_amount;
     smt.update_total(total2);
     smt.update(SmtKey::Member(sport_id.clone()), SmtValue::new(0));
     let new_smt_hash = smt.root_hash();
@@ -369,10 +390,10 @@ pub fn update_accountbook(
     let abd = AccountBookData::new_unchecked(witness.output_type().to_opt().unwrap().unpack())
         .as_builder()
         .proof(smt_proof.pack())
-        .total_a(total.0.pack())
-        .total_b(total.1.pack())
-        .total_c(total.2.pack())
-        .total_d(total.3.pack())
+        .total_a(total.a.pack())
+        .total_b(total.b.pack())
+        .total_c(total.c.pack())
+        .total_d(total.d.pack())
         .build();
     let witness = witness
         .as_builder()

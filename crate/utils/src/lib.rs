@@ -5,234 +5,75 @@ extern crate alloc;
 #[cfg(feature = "smt")]
 pub mod account_book_proof;
 
+mod hash;
+pub use hash::{Hash, HASH_SIZE};
+
+mod udt_info;
+pub use udt_info::UDTInfo;
+
 use alloc::vec::Vec;
 use ckb_std::{
     ckb_constants::Source,
-    ckb_types::prelude::Pack,
-    error::SysError,
-    high_level::{load_cell_data, load_cell_type_hash},
+    high_level::{load_cell_lock, load_cell_type},
     log,
 };
-use types::{blockchain::Byte32, error::SilentBerryError};
+use spore_types::spore::SporeData;
+use types::error::SilentBerryError as Error;
 
-pub const HASH_SIZE: usize = 32;
-const CKB_HASH_PERSONALIZATION: &[u8] = b"ckb-default-hash";
+pub fn get_spore_level(data: &SporeData) -> Result<u8, Error> {
+    use alloc::string::String;
+    let content = String::from_utf8(data.content().raw_data().to_vec()).map_err(|e| {
+        log::error!("Parse Spore Content to string Failed, error: {:?}", e);
+        Error::Spore
+    })?;
 
-#[derive(PartialEq, Eq, Clone)]
-pub struct Hash(pub [u8; HASH_SIZE]);
-impl From<[u8; 32]> for Hash {
-    fn from(value: [u8; 32]) -> Self {
-        Self(value)
-    }
-}
-impl From<types::blockchain::Byte32> for Hash {
-    fn from(value: types::blockchain::Byte32) -> Self {
-        Self(value.raw_data().to_vec().try_into().unwrap())
-    }
-}
-#[cfg(feature = "smt")]
-impl From<sparse_merkle_tree::H256> for Hash {
-    fn from(value: sparse_merkle_tree::H256) -> Self {
-        Self(value.into())
-    }
-}
-#[cfg(feature = "smt")]
-impl From<Hash> for sparse_merkle_tree::H256 {
-    fn from(value: Hash) -> Self {
-        value.0.into()
-    }
-}
-impl From<Hash> for types::blockchain::Byte32 {
-    fn from(value: Hash) -> Self {
-        value.0.pack()
-    }
-}
-impl From<Hash> for [u8; 32] {
-    fn from(value: Hash) -> Self {
-        value.0
-    }
-}
-impl From<Hash> for types::blockchain::Bytes {
-    fn from(value: Hash) -> Self {
-        use ckb_std::ckb_types::prelude::Pack;
-        value.0.to_vec().pack()
-    }
-}
-impl From<Hash> for ckb_std::ckb_types::bytes::Bytes {
-    fn from(value: Hash) -> Self {
-        value.0.to_vec().into()
-    }
-}
-
-impl TryFrom<&[u8]> for Hash {
-    type Error = SilentBerryError;
-    fn try_from(value: &[u8]) -> Result<Self, SilentBerryError> {
-        let v: [u8; 32] = value.try_into().map_err(|e| {
-            ckb_std::log::warn!("Type conversion failed, Error: {:?}", e);
-            SilentBerryError::TypeConversion
+    let c = content
+        .chars()
+        .rev()
+        .find(|c| c.is_ascii_hexdigit())
+        .ok_or_else(|| {
+            log::error!("Spore Content format error, unable to find level");
+            Error::Spore
         })?;
 
-        Ok(Self(v))
-    }
-}
-impl TryFrom<ckb_std::ckb_types::bytes::Bytes> for Hash {
-    type Error = SilentBerryError;
-    fn try_from(value: ckb_std::ckb_types::bytes::Bytes) -> Result<Self, SilentBerryError> {
-        let v: [u8; 32] = value.to_vec().try_into().map_err(|e| {
-            ckb_std::log::warn!("Type conversion failed, Error: {:?}", e);
-            SilentBerryError::TypeConversion
-        })?;
-
-        Ok(Self(v))
-    }
-}
-impl TryFrom<types::blockchain::Bytes> for Hash {
-    type Error = SilentBerryError;
-    fn try_from(value: types::blockchain::Bytes) -> Result<Self, Self::Error> {
-        value.raw_data().to_vec().as_slice().try_into()
-    }
-}
-impl TryFrom<types::blockchain::BytesOpt> for Hash {
-    type Error = SilentBerryError;
-    fn try_from(value: types::blockchain::BytesOpt) -> Result<Self, Self::Error> {
-        value
-            .to_opt()
-            .ok_or_else(|| {
-                log::error!("BytesOpt to Hash failed, BytesOpt is None");
-                SilentBerryError::TypeConversion
-            })?
-            .try_into()
-    }
-}
-impl TryFrom<spore_types::spore::BytesOpt> for Hash {
-    type Error = SilentBerryError;
-    fn try_from(value: spore_types::spore::BytesOpt) -> Result<Self, Self::Error> {
-        value
-            .to_opt()
-            .ok_or_else(|| {
-                log::error!("BytesOpt to Hash failed, BytesOpt is None");
-                SilentBerryError::TypeConversion
-            })?
-            .raw_data()
-            .to_vec()
-            .as_slice()
-            .try_into()
-    }
+    Ok(c.to_digit(16).ok_or_else(|| {
+        log::error!("Spore Content format error, unable to find level");
+        Error::Spore
+    })? as u8)
 }
 
-impl PartialEq<&[u8]> for Hash {
-    fn eq(&self, other: &&[u8]) -> bool {
-        &self.0 == other
-    }
-}
-impl PartialEq<[u8; 32]> for Hash {
-    fn eq(&self, other: &[u8; 32]) -> bool {
-        &self.0 == other
-    }
-}
-impl PartialEq<Option<[u8; 32]>> for Hash {
-    fn eq(&self, other: &Option<[u8; 32]>) -> bool {
-        if let Some(v) = other {
-            &self.0 == v
+pub fn get_index_by_code_hash(
+    hash: Hash,
+    is_lock: bool,
+    source: Source,
+) -> Result<Vec<usize>, Error> {
+    let mut indexs = Vec::new();
+    let mut index = 0;
+    loop {
+        let ret = if is_lock {
+            load_cell_lock(index, source).map(Some)
         } else {
-            false
-        }
-    }
-}
-impl PartialEq<Byte32> for Hash {
-    fn eq(&self, other: &Byte32) -> bool {
-        self.0 == other.raw_data().to_vec().as_slice()
-    }
-}
+            load_cell_type(index, source)
+        };
+        index += 1;
 
-impl Hash {
-    pub fn ckb_hash(data: &[u8]) -> Self {
-        let mut hasher = blake2b_ref::Blake2bBuilder::new(HASH_SIZE)
-            .personal(CKB_HASH_PERSONALIZATION)
-            .build();
-        hasher.update(data);
-        let mut hash = [0u8; HASH_SIZE];
-        hasher.finalize(&mut hash);
-
-        hash.into()
-    }
-    pub fn as_slice(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-pub struct UDTInfo {
-    pub inputs: Vec<(u128, usize)>,
-    pub outputs: Vec<(u128, usize)>,
-}
-impl UDTInfo {
-    pub fn new(xudt_script_hash: Hash) -> Result<Self, SilentBerryError> {
-        let inputs = Self::load_udt(Source::Input, &xudt_script_hash)?;
-        let outputs = Self::load_udt(Source::Output, &xudt_script_hash)?;
-
-        Ok(Self { inputs, outputs })
-    }
-
-    fn load_udt(
-        source: Source,
-        xudt_script_hash: &Hash,
-    ) -> Result<Vec<(u128, usize)>, SilentBerryError> {
-        let mut xudt_info = Vec::new();
-        let mut index = 0usize;
-        loop {
-            match load_cell_type_hash(index, source) {
-                Ok(type_hash) => {
-                    if (*xudt_script_hash) == type_hash {
-                        let udt = u128::from_le_bytes(
-                            load_cell_data(index, source)?.try_into().map_err(|d| {
-                                log::error!("Parse {:?} xudt data failed: {:02x?}", source, d);
-                                SilentBerryError::CheckXUDT
-                            })?,
-                        );
-                        xudt_info.push((udt, index));
-                    }
+        match ret {
+            Ok(script) => {
+                if script.is_none() {
+                    continue;
                 }
-                Err(error) => match error {
-                    SysError::IndexOutOfBound => break,
-                    _ => return Err(error.into()),
-                },
+                if hash == script.unwrap().code_hash() {
+                    indexs.push(index - 1);
+                }
             }
-            index += 1;
+            Err(ckb_std::error::SysError::IndexOutOfBound) => {
+                break;
+            }
+            Err(e) => {
+                log::error!("Load cell script failed: {:?}", e);
+                return Err(e.into());
+            }
         }
-        Ok(xudt_info)
     }
-
-    pub fn check_udt(&self) -> Result<(), SilentBerryError> {
-        let mut i = 0u128;
-        for u in &self.inputs {
-            i = i.checked_add(u.0).ok_or_else(|| {
-                log::error!("CheckUDT Failed, udt overflow");
-                SilentBerryError::CheckXUDT
-            })?;
-        }
-
-        let mut o = 0u128;
-        for u in &self.inputs {
-            o = o.checked_add(u.0).ok_or_else(|| {
-                log::error!("CheckUDT Failed, udt overflow");
-                SilentBerryError::CheckXUDT
-            })?;
-        }
-
-        if i != o {
-            log::error!("Inputs and Outputs UDT is not equal");
-            return Err(SilentBerryError::CheckXUDT);
-        }
-
-        Ok(())
-    }
-
-    pub fn input_total(&self) -> u128 {
-        // Overflow is already checked in check_udt
-        let mut total = 0;
-        for (amount, _) in &self.inputs {
-            total += amount;
-        }
-        total
-    }
+    Ok(indexs)
 }

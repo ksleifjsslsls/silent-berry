@@ -15,6 +15,7 @@ table BuyIntentData {
 # Witness
 table WithdrawalIntentData {
     xudt_script_hash: Byte32,
+    spore_level: byte,
     spore_id: Byte32,
     cluster_id: Byte32,
 

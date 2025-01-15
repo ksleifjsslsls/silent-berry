@@ -470,12 +470,7 @@ impl ::core::fmt::Display for WithdrawalIntentData {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         write!(f, "{} {{ ", Self::NAME)?;
         write!(f, "{}: {}", "xudt_script_hash", self.xudt_script_hash())?;
-        write!(
-            f,
-            ", {}: {}",
-            "account_book_script_hash",
-            self.account_book_script_hash()
-        )?;
+        write!(f, ", {}: {}", "spore_level", self.spore_level())?;
         write!(f, ", {}: {}", "spore_id", self.spore_id())?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "expire_since", self.expire_since())?;
@@ -495,14 +490,13 @@ impl ::core::default::Default for WithdrawalIntentData {
     }
 }
 impl WithdrawalIntentData {
-    const DEFAULT_VALUE: [u8; 204] = [
-        204, 0, 0, 0, 32, 0, 0, 0, 64, 0, 0, 0, 96, 0, 0, 0, 128, 0, 0, 0, 160, 0, 0, 0, 168, 0, 0,
-        0, 200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    const DEFAULT_VALUE: [u8; 173] = [
+        173, 0, 0, 0, 32, 0, 0, 0, 64, 0, 0, 0, 65, 0, 0, 0, 97, 0, 0, 0, 129, 0, 0, 0, 137, 0, 0,
+        0, 169, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ];
     pub const FIELD_COUNT: usize = 7;
     pub fn total_size(&self) -> usize {
@@ -527,11 +521,11 @@ impl WithdrawalIntentData {
         let end = molecule::unpack_number(&slice[8..]) as usize;
         Byte32::new_unchecked(self.0.slice(start..end))
     }
-    pub fn account_book_script_hash(&self) -> Byte32 {
+    pub fn spore_level(&self) -> Byte {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[8..]) as usize;
         let end = molecule::unpack_number(&slice[12..]) as usize;
-        Byte32::new_unchecked(self.0.slice(start..end))
+        Byte::new_unchecked(self.0.slice(start..end))
     }
     pub fn spore_id(&self) -> Byte32 {
         let slice = self.as_slice();
@@ -595,7 +589,7 @@ impl molecule::prelude::Entity for WithdrawalIntentData {
     fn as_builder(self) -> Self::Builder {
         Self::new_builder()
             .xudt_script_hash(self.xudt_script_hash())
-            .account_book_script_hash(self.account_book_script_hash())
+            .spore_level(self.spore_level())
             .spore_id(self.spore_id())
             .cluster_id(self.cluster_id())
             .expire_since(self.expire_since())
@@ -623,12 +617,7 @@ impl<'r> ::core::fmt::Display for WithdrawalIntentDataReader<'r> {
     fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         write!(f, "{} {{ ", Self::NAME)?;
         write!(f, "{}: {}", "xudt_script_hash", self.xudt_script_hash())?;
-        write!(
-            f,
-            ", {}: {}",
-            "account_book_script_hash",
-            self.account_book_script_hash()
-        )?;
+        write!(f, ", {}: {}", "spore_level", self.spore_level())?;
         write!(f, ", {}: {}", "spore_id", self.spore_id())?;
         write!(f, ", {}: {}", "cluster_id", self.cluster_id())?;
         write!(f, ", {}: {}", "expire_since", self.expire_since())?;
@@ -665,11 +654,11 @@ impl<'r> WithdrawalIntentDataReader<'r> {
         let end = molecule::unpack_number(&slice[8..]) as usize;
         Byte32Reader::new_unchecked(&self.as_slice()[start..end])
     }
-    pub fn account_book_script_hash(&self) -> Byte32Reader<'r> {
+    pub fn spore_level(&self) -> ByteReader<'r> {
         let slice = self.as_slice();
         let start = molecule::unpack_number(&slice[8..]) as usize;
         let end = molecule::unpack_number(&slice[12..]) as usize;
-        Byte32Reader::new_unchecked(&self.as_slice()[start..end])
+        ByteReader::new_unchecked(&self.as_slice()[start..end])
     }
     pub fn spore_id(&self) -> Byte32Reader<'r> {
         let slice = self.as_slice();
@@ -753,7 +742,7 @@ impl<'r> molecule::prelude::Reader<'r> for WithdrawalIntentDataReader<'r> {
             return ve!(Self, OffsetsNotMatch);
         }
         Byte32Reader::verify(&slice[offsets[0]..offsets[1]], compatible)?;
-        Byte32Reader::verify(&slice[offsets[1]..offsets[2]], compatible)?;
+        ByteReader::verify(&slice[offsets[1]..offsets[2]], compatible)?;
         Byte32Reader::verify(&slice[offsets[2]..offsets[3]], compatible)?;
         Byte32Reader::verify(&slice[offsets[3]..offsets[4]], compatible)?;
         Uint64Reader::verify(&slice[offsets[4]..offsets[5]], compatible)?;
@@ -765,7 +754,7 @@ impl<'r> molecule::prelude::Reader<'r> for WithdrawalIntentDataReader<'r> {
 #[derive(Clone, Debug, Default)]
 pub struct WithdrawalIntentDataBuilder {
     pub(crate) xudt_script_hash: Byte32,
-    pub(crate) account_book_script_hash: Byte32,
+    pub(crate) spore_level: Byte,
     pub(crate) spore_id: Byte32,
     pub(crate) cluster_id: Byte32,
     pub(crate) expire_since: Uint64,
@@ -778,8 +767,8 @@ impl WithdrawalIntentDataBuilder {
         self.xudt_script_hash = v;
         self
     }
-    pub fn account_book_script_hash(mut self, v: Byte32) -> Self {
-        self.account_book_script_hash = v;
+    pub fn spore_level(mut self, v: Byte) -> Self {
+        self.spore_level = v;
         self
     }
     pub fn spore_id(mut self, v: Byte32) -> Self {
@@ -809,7 +798,7 @@ impl molecule::prelude::Builder for WithdrawalIntentDataBuilder {
     fn expected_length(&self) -> usize {
         molecule::NUMBER_SIZE * (Self::FIELD_COUNT + 1)
             + self.xudt_script_hash.as_slice().len()
-            + self.account_book_script_hash.as_slice().len()
+            + self.spore_level.as_slice().len()
             + self.spore_id.as_slice().len()
             + self.cluster_id.as_slice().len()
             + self.expire_since.as_slice().len()
@@ -822,7 +811,7 @@ impl molecule::prelude::Builder for WithdrawalIntentDataBuilder {
         offsets.push(total_size);
         total_size += self.xudt_script_hash.as_slice().len();
         offsets.push(total_size);
-        total_size += self.account_book_script_hash.as_slice().len();
+        total_size += self.spore_level.as_slice().len();
         offsets.push(total_size);
         total_size += self.spore_id.as_slice().len();
         offsets.push(total_size);
@@ -838,7 +827,7 @@ impl molecule::prelude::Builder for WithdrawalIntentDataBuilder {
             writer.write_all(&molecule::pack_number(offset as molecule::Number))?;
         }
         writer.write_all(self.xudt_script_hash.as_slice())?;
-        writer.write_all(self.account_book_script_hash.as_slice())?;
+        writer.write_all(self.spore_level.as_slice())?;
         writer.write_all(self.spore_id.as_slice())?;
         writer.write_all(self.cluster_id.as_slice())?;
         writer.write_all(self.expire_since.as_slice())?;

@@ -1,4 +1,5 @@
 use crate::{build_tx::*, *};
+use account_book::AccountBook;
 use ckb_testtool::ckb_types::{
     core::TransactionBuilder,
     packed::{CellDep, CellInput, CellOutput, Script, WitnessArgs},
@@ -8,7 +9,7 @@ use spore_types::spore::SporeData;
 use types::{
     AccountBookCellData, AccountBookData, BuyIntentData, DobSellingData, WithdrawalIntentData,
 };
-use utils::Hash;
+use utils::{account_book_proof::TotalAmounts, Hash};
 
 const DATA_ASSET_AMOUNT: u128 = 200;
 const DATA_MIN_CAPACITY: u64 = 1000;
@@ -356,7 +357,17 @@ fn test_simple_selling() {
     // Spore
     let tx = build_mint_spore(&mut context, tx, cluster_deps, spore_data);
 
-    let tx = update_accountbook(&mut context, tx, DATA_ASSET_AMOUNT, (5000, 5000, 0, 0));
+    let tx = update_accountbook(
+        &mut context,
+        tx,
+        DATA_ASSET_AMOUNT,
+        TotalAmounts {
+            a: 5000,
+            b: 5000,
+            c: 0,
+            d: 0,
+        },
+    );
     let tx = context.complete_tx(tx);
     // print_tx_info(&context, &tx);
     verify_and_dump_failed_tx(&context, &tx, MAX_CYCLES).expect("pass");
@@ -373,9 +384,15 @@ fn test_simple_withdrawal_intent() {
     let tx = build_transfer_spore(&mut context, tx, &spore_data);
     let tx = context.complete_tx(tx);
 
+    let smt = AccountBook::new_test();
+    let old_hash = smt.root_hash();
+
+    let totals = smt.get_total();
+
     let withdrawal_intent_data = def_withdrawal_intent_data(&mut context)
         .as_builder()
         .spore_id(get_spore_id(&tx).pack())
+        .spore_level(2.into())
         .cluster_id(get_cluster_id(&spore_data).pack())
         .build();
     let withdrawal_intent_script =

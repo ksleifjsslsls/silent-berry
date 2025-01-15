@@ -9,7 +9,6 @@ ckb_std::entry!(program_entry);
 #[cfg(not(any(feature = "native-simulator", test)))]
 ckb_std::default_alloc!();
 
-use alloc::string::String;
 use ckb_std::{
     ckb_constants::Source,
     ckb_types::prelude::{Builder, Entity, Pack, Reader, Unpack},
@@ -24,7 +23,10 @@ use core::panic;
 use spore_types::spore::{SporeData, SporeDataReader};
 use types::AccountBookData;
 use types::{error::SilentBerryError as Error, AccountBookCellData, AccountBookCellDataReader};
-use utils::{account_book_proof::SmtKey, Hash, UDTInfo};
+use utils::{
+    account_book_proof::{SmtKey, TotalAmounts},
+    Hash, UDTInfo,
+};
 
 fn load_verified_data() -> Result<AccountBookData, Error> {
     let args = load_script()?.args().raw_data();
@@ -137,58 +139,23 @@ fn get_spore(source: Source) -> Result<(SporeData, Hash), Error> {
     }
 }
 
-fn get_spore_level(data: &SporeData) -> Result<u8, Error> {
-    let content = String::from_utf8(data.content().raw_data().to_vec()).map_err(|e| {
-        log::error!("Parse Spore Content to string Failed, error: {:?}", e);
-        Error::Spore
-    })?;
-
-    let c = content
-        .chars()
-        .rev()
-        .find(|c| c.is_ascii_hexdigit())
-        .ok_or_else(|| {
-            log::error!("Spore Content format error, unable to find level");
-            Error::Spore
-        })?;
-
-    Ok(c.to_digit(16).ok_or_else(|| {
-        log::error!("Spore Content format error, unable to find level");
-        Error::Spore
-    })? as u8)
-}
-
 fn check_script_code_hash(data: &AccountBookData) -> Result<bool, Error> {
-    let dob_selling_code_hash = data.dob_selling_code_hash();
-    if QueryIter::new(load_cell_lock, Source::Input).any(|f| f.code_hash() == dob_selling_code_hash)
-    {
-        let hash = data.buy_intent_code_hash();
-        if !QueryIter::new(load_cell_type, Source::Input).any(|f| {
-            if let Some(s) = f {
-                s.code_hash() == hash
-            } else {
-                false
-            }
-        }) {
-            log::error!("BuyIntent Script not found in Inputs");
-            return Err(Error::CheckScript);
-        }
+    let dob_selling_code_hash = data.dob_selling_code_hash().into();
 
+    let has_dob_selling =
+        !utils::get_index_by_code_hash(dob_selling_code_hash, true, Source::Input)?.is_empty();
+    if has_dob_selling {
         Ok(true)
     } else {
-        let hash = data.withdrawal_intent_code_hash();
-        if !QueryIter::new(load_cell_type, Source::Input).any(|f| {
-            if let Some(s) = f {
-                s.code_hash() == hash
-            } else {
-                false
-            }
-        }) {
+        let withdrawal_code_hash = data.withdrawal_intent_code_hash().into();
+        let has_withdrawal =
+            !utils::get_index_by_code_hash(withdrawal_code_hash, false, Source::Input)?.is_empty();
+        if has_withdrawal {
+            Ok(false)
+        } else {
             log::error!("WithdrawalIntent Script not found in Inputs");
-            return Err(Error::CheckScript);
+            Err(Error::CheckScript)
         }
-
-        Ok(false)
     }
 }
 
@@ -215,15 +182,6 @@ fn check_account_book() -> Result<Hash, Error> {
     }
 
     Ok(hash.into())
-}
-
-fn get_total_by_data(data: &AccountBookData) -> (u128, u128, u128, u128) {
-    (
-        data.total_a().unpack(),
-        data.total_b().unpack(),
-        data.total_c().unpack(),
-        data.total_d().unpack(),
-    )
 }
 
 fn check_input_type_proxy_lock(
@@ -291,16 +249,16 @@ fn check_input_type_proxy_lock(
         return Err(Error::CheckXUDT);
     }
 
-    let total = get_total_by_data(data);
+    let total_amounts: TotalAmounts = data.into();
 
-    if input_amount != total.0 + total.1 + total.2 + total.3 {
+    if input_amount != total_amounts.total() {
         log::error!(
             "Witness total failed, input_amount: {}, a:{}, b:{}, c:{}, d:{}",
             input_amount,
-            total.0,
-            total.1,
-            total.2,
-            total.3
+            total_amounts.a,
+            total_amounts.b,
+            total_amounts.c,
+            total_amounts.d
         );
         return Err(Error::CheckXUDT);
     }
@@ -344,28 +302,19 @@ fn selling(
     let (_, _, amount) =
         check_input_type_proxy_lock(&data, &udt_info, cell_data.asset_amount().unpack())?;
 
-    let mut total = get_total_by_data(&data);
+    let mut total: TotalAmounts = (&data).into();
     let proof = utils::account_book_proof::AccountBookProof::new(data.proof().unpack());
     if !proof.verify(
         old_smt_hash,
-        total,
+        total.clone(),
         (SmtKey::Member(spore_id.clone()), None),
     )? {
         log::error!("Verify Input SMT failed");
         return Err(Error::Smt);
     }
 
-    let level = get_spore_level(&spore_data)?;
-    match level {
-        1 => total.0 += amount,
-        2 => total.1 += amount,
-        3 => total.2 += amount,
-        4 => total.3 += amount,
-        _ => {
-            log::error!("Spore level failed, {} is not 1,2,3,4", level);
-            return Err(Error::Spore);
-        }
-    };
+    let level = utils::get_spore_level(&spore_data)?;
+    total.add(amount, level)?;
 
     let new_smt_hash: Hash = cell_data.smt_root_hash().into();
     if !proof.verify(new_smt_hash, total, (SmtKey::Member(spore_id), Some(0)))? {
@@ -376,8 +325,34 @@ fn selling(
     Ok(())
 }
 
-fn withdrawal(_data: AccountBookData) -> Result<(), Error> {
-    log::error!("Unsupport");
+fn withdrawal(data: AccountBookData) -> Result<(), Error> {
+    let xudt_script_hash = data.xudt_script_hash().into();
+    let udt_info = UDTInfo::new(xudt_script_hash)?;
+    udt_info.check_udt()?;
+
+    // Load spore level
+    let _spore_level: u8 = {
+        let withdrawal_code_hash = data.withdrawal_intent_code_hash().into();
+        let indexs = utils::get_index_by_code_hash(withdrawal_code_hash, false, Source::Input)?;
+        let withdrawal_data = load_witness_args(indexs[0], Source::Input)?
+            .input_type()
+            .to_opt()
+            .ok_or_else(|| {
+                log::error!("Load withdrawal intent witness failed, is none");
+                Error::TxStructure
+            })?
+            .raw_data()
+            .to_vec();
+        types::WithdrawalIntentDataReader::verify(&withdrawal_data, true)?;
+        types::WithdrawalIntentData::new_unchecked(withdrawal_data.into())
+            .spore_level()
+            .into()
+    };
+
+    // TODO
+
+    // let spore_level = get_spore_level(data);
+
     Ok(())
 }
 

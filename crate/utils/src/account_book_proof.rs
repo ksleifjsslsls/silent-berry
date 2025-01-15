@@ -2,9 +2,12 @@ extern crate alloc;
 
 use crate::Hash;
 use alloc::vec::Vec;
+use ckb_std::ckb_types::prelude::Unpack;
+use ckb_std::log;
 pub use sparse_merkle_tree::traits::Value;
 pub use sparse_merkle_tree::{blake2b::Blake2bHasher, CompiledMerkleProof, H256};
-use types::error::SilentBerryError;
+use types::error::SilentBerryError as Error;
+use types::AccountBookData;
 
 #[cfg(feature = "std")]
 use sparse_merkle_tree::{default_store::DefaultStore, SparseMerkleTree};
@@ -44,7 +47,7 @@ pub struct SmtValue {
 impl Value for SmtValue {
     fn to_h256(&self) -> H256 {
         let mut hasher = blake2b_ref::Blake2bBuilder::new(crate::HASH_SIZE)
-            .personal(crate::CKB_HASH_PERSONALIZATION)
+            .personal(crate::hash::CKB_HASH_PERSONALIZATION)
             .build();
 
         hasher.update(&self.amount.to_le_bytes());
@@ -75,9 +78,9 @@ impl AccountBookProof {
     pub fn verify(
         &self,
         root: Hash,
-        total: (u128, u128, u128, u128),
+        total: TotalAmounts,
         member: (SmtKey, Option<u128>),
-    ) -> Result<bool, SilentBerryError> {
+    ) -> Result<bool, Error> {
         use alloc::vec;
         let proof = CompiledMerkleProof(self.proof.clone());
 
@@ -85,10 +88,10 @@ impl AccountBookProof {
             .verify::<Blake2bHasher>(
                 &root.into(),
                 vec![
-                    (SmtKey::TotalA.get_key(), SmtValue::new(total.0).to_h256()),
-                    (SmtKey::TotalB.get_key(), SmtValue::new(total.1).to_h256()),
-                    (SmtKey::TotalC.get_key(), SmtValue::new(total.2).to_h256()),
-                    (SmtKey::TotalD.get_key(), SmtValue::new(total.3).to_h256()),
+                    (SmtKey::TotalA.get_key(), SmtValue::new(total.a).to_h256()),
+                    (SmtKey::TotalB.get_key(), SmtValue::new(total.b).to_h256()),
+                    (SmtKey::TotalC.get_key(), SmtValue::new(total.c).to_h256()),
+                    (SmtKey::TotalD.get_key(), SmtValue::new(total.d).to_h256()),
                     (
                         member.0.get_key(),
                         if let Some(a) = member.1 {
@@ -101,7 +104,64 @@ impl AccountBookProof {
             )
             .map_err(|e| {
                 ckb_std::log::error!("Verify Inputs Smt Error: {:?}", e);
-                SilentBerryError::Smt
+                Error::Smt
             })
+    }
+}
+
+#[derive(Clone)]
+pub struct TotalAmounts {
+    pub a: u128,
+    pub b: u128,
+    pub c: u128,
+    pub d: u128,
+}
+impl TotalAmounts {
+    pub fn total(&self) -> u128 {
+        self.a + self.b + self.c + self.d
+    }
+    pub fn add(&mut self, v: u128, level: u8) -> Result<(), Error> {
+        match level {
+            1 => {
+                self.a = self.a.checked_add(v).ok_or_else(|| {
+                    log::error!("Add total overflow");
+                    Error::AccountBookOverflow
+                })?;
+            }
+            2 => {
+                self.b = self.b.checked_add(v).ok_or_else(|| {
+                    log::error!("Add total overflow");
+                    Error::AccountBookOverflow
+                })?;
+            }
+            3 => {
+                self.c = self.c.checked_add(v).ok_or_else(|| {
+                    log::error!("Add total overflow");
+                    Error::AccountBookOverflow
+                })?;
+            }
+            4 => {
+                self.d = self.d.checked_add(v).ok_or_else(|| {
+                    log::error!("Add total overflow");
+                    Error::AccountBookOverflow
+                })?;
+            }
+            _ => {
+                log::error!("Spore level failed, {} is not 1,2,3,4", level);
+                return Err(Error::Spore);
+            }
+        }
+
+        Ok(())
+    }
+}
+impl From<&AccountBookData> for TotalAmounts {
+    fn from(value: &AccountBookData) -> Self {
+        Self {
+            a: value.total_a().unpack(),
+            b: value.total_b().unpack(),
+            c: value.total_c().unpack(),
+            d: value.total_d().unpack(),
+        }
     }
 }
