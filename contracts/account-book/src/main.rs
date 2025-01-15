@@ -25,7 +25,7 @@ use types::AccountBookData;
 use types::{error::SilentBerryError as Error, AccountBookCellData, AccountBookCellDataReader};
 use utils::{
     account_book_proof::{SmtKey, TotalAmounts},
-    Hash, UDTInfo,
+    Hash, Level, UDTInfo,
 };
 
 fn load_verified_data() -> Result<AccountBookData, Error> {
@@ -313,7 +313,7 @@ fn selling(
         return Err(Error::Smt);
     }
 
-    let level = utils::get_spore_level(&spore_data)?;
+    let level: Level = spore_data.try_into()?;
     total.add(amount, level)?;
 
     let new_smt_hash: Hash = cell_data.smt_root_hash().into();

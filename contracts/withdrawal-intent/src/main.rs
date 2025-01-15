@@ -17,12 +17,12 @@ use ckb_std::{
         load_cell_capacity, load_cell_data, load_cell_type, load_cell_type_hash, load_script,
         load_witness_args, QueryIter,
     },
-    log,
+    log::{self},
 };
 use spore_types::spore::{SporeData, SporeDataReader};
 use types::error::SilentBerryError as Error;
 use types::WithdrawalIntentData;
-use utils::{Hash, UDTInfo};
+use utils::{Hash, Level, UDTInfo};
 
 fn is_input() -> Result<bool, Error> {
     let input = match load_cell_capacity(0, Source::GroupInput) {
@@ -137,8 +137,9 @@ fn check_spore(data: &WithdrawalIntentData) -> Result<(), Error> {
         return Err(Error::Spore);
     }
 
-    let spore_level: ckb_std::ckb_types::packed::Byte = utils::get_spore_level(&spore_data)?.into();
-    if data.spore_level() != spore_level {
+    let spore_level: Level = spore_data.try_into()?;
+    let spore_level_by_data: Level = data.spore_level().try_into()?;
+    if spore_level_by_data != spore_level {
         log::error!("Check spore level failed");
         return Err(Error::Spore);
     }

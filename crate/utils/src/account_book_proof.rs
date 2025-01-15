@@ -1,9 +1,9 @@
 extern crate alloc;
 
-use crate::Hash;
+use crate::{Hash, Level};
 use alloc::vec::Vec;
 use ckb_std::ckb_types::prelude::Unpack;
-use ckb_std::log;
+use ckb_std::log::{self};
 pub use sparse_merkle_tree::traits::Value;
 pub use sparse_merkle_tree::{blake2b::Blake2bHasher, CompiledMerkleProof, H256};
 use types::error::SilentBerryError as Error;
@@ -120,34 +120,34 @@ impl TotalAmounts {
     pub fn total(&self) -> u128 {
         self.a + self.b + self.c + self.d
     }
-    pub fn add(&mut self, v: u128, level: u8) -> Result<(), Error> {
+    pub fn add(&mut self, v: u128, level: Level) -> Result<(), Error> {
         match level {
-            1 => {
+            Level::A => {
                 self.a = self.a.checked_add(v).ok_or_else(|| {
                     log::error!("Add total overflow");
                     Error::AccountBookOverflow
                 })?;
             }
-            2 => {
+            Level::B => {
                 self.b = self.b.checked_add(v).ok_or_else(|| {
                     log::error!("Add total overflow");
                     Error::AccountBookOverflow
                 })?;
             }
-            3 => {
+            Level::C => {
                 self.c = self.c.checked_add(v).ok_or_else(|| {
                     log::error!("Add total overflow");
                     Error::AccountBookOverflow
                 })?;
             }
-            4 => {
+            Level::D => {
                 self.d = self.d.checked_add(v).ok_or_else(|| {
                     log::error!("Add total overflow");
                     Error::AccountBookOverflow
                 })?;
             }
             _ => {
-                log::error!("Spore level failed, {} is not 1,2,3,4", level);
+                log::error!("Spore level failed, {:?} ", level);
                 return Err(Error::Spore);
             }
         }
@@ -165,3 +165,12 @@ impl From<&AccountBookData> for TotalAmounts {
         }
     }
 }
+
+// pub fn get_withdrawal(
+//     level: u8,
+//     totals: TotalAmounts,
+//     data: types::AccountBookData,
+//     cell_data: types::AccountBookCellData,
+// ) -> u128 {
+//     0
+// }

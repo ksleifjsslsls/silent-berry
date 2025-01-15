@@ -9,7 +9,10 @@ use spore_types::spore::SporeData;
 use types::{
     AccountBookCellData, AccountBookData, BuyIntentData, DobSellingData, WithdrawalIntentData,
 };
-use utils::{account_book_proof::TotalAmounts, Hash};
+use utils::{
+    account_book_proof::{SmtKey, SmtValue, TotalAmounts},
+    Hash,
+};
 
 const DATA_ASSET_AMOUNT: u128 = 200;
 const DATA_MIN_CAPACITY: u64 = 1000;
@@ -384,11 +387,6 @@ fn test_simple_withdrawal_intent() {
     let tx = build_transfer_spore(&mut context, tx, &spore_data);
     let tx = context.complete_tx(tx);
 
-    let smt = AccountBook::new_test();
-    let old_hash = smt.root_hash();
-
-    let totals = smt.get_total();
-
     let withdrawal_intent_data = def_withdrawal_intent_data(&mut context)
         .as_builder()
         .spore_id(get_spore_id(&tx).pack())
@@ -434,14 +432,26 @@ fn test_simple_withdrawal_suc() {
     let xudt_script = build_xudt_script(&mut context);
 
     let spore_id: Hash = [0x1B; 32].into();
+    // let spore_level: u8 = 1;
     let cluster_id: Hash = [0x1A; 32].into();
+    let old_amount = 10u128;
+
+    let mut smt = AccountBook::new_test();
+    smt.update(SmtKey::Member(spore_id.clone()), SmtValue::new(old_amount));
+
+    let old_hash = smt.root_hash();
+    // let totals = smt.get_total();
 
     // Account Book
-    let account_book_cell_data = def_account_book_cell_data(&mut context);
+    let account_book_cell_data = def_account_book_cell_data(&mut context)
+        .as_builder()
+        .smt_root_hash(old_hash.into())
+        .build();
     let account_book_data = def_account_book_data(&mut context)
         .as_builder()
         .cluster_id(cluster_id.clone().into())
         .build();
+
     let account_book_script = build_account_book_script(&mut context, account_book_data.clone());
     let tx = {
         let input_proxy_script = build_input_proxy_script(
